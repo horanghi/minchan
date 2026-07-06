@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎮 민찬 게임랜드</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    min-height:100vh; font-family:'Segoe UI','Apple SD Gothic Neo',sans-serif;
+    color:#fff; display:flex; flex-direction:column; align-items:center;
+    padding:40px 16px; overflow-x:hidden;
+    background:
+      radial-gradient(ellipse at 15% 10%, rgba(255,206,77,.12), transparent 45%),
+      radial-gradient(ellipse at 85% 20%, rgba(77,163,255,.14), transparent 45%),
+      radial-gradient(ellipse at 50% 100%, rgba(123,224,123,.10), transparent 50%),
+      linear-gradient(180deg,#0c1018 0%, #131a26 50%, #0a0e16 100%);
+    background-attachment:fixed;
+  }
+  /* 반짝이는 별 배경 */
+  body::before {
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background-image:
+      radial-gradient(2px 2px at 12% 22%, rgba(255,255,255,.6), transparent),
+      radial-gradient(1.5px 1.5px at 67% 8%, rgba(255,255,255,.5), transparent),
+      radial-gradient(2px 2px at 38% 64%, rgba(255,255,255,.4), transparent),
+      radial-gradient(1.5px 1.5px at 85% 48%, rgba(255,255,255,.5), transparent),
+      radial-gradient(1px 1px at 24% 88%, rgba(255,255,255,.4), transparent),
+      radial-gradient(2px 2px at 92% 80%, rgba(255,255,255,.4), transparent);
+    animation:twinkle 4s ease-in-out infinite;
+  }
+  @keyframes twinkle { 0%,100%{opacity:.5;} 50%{opacity:1;} }
+
+  h1 {
+    font-size:clamp(30px, 7vw, 48px); font-weight:900; text-align:center;
+    background:linear-gradient(180deg,#fff6c4,#ffce4d 55%,#e0950a);
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+    filter:drop-shadow(2px 3px 0 rgba(90,58,0,.8)); margin-bottom:8px;
+    animation:bounceIn .6s cubic-bezier(.2,1.4,.5,1);
+  }
+  @keyframes bounceIn { 0%{transform:scale(.6); opacity:0;} 100%{transform:scale(1); opacity:1;} }
+  .sub { color:#93a1b3; font-size:15px; margin-bottom:40px; text-align:center; }
+
+  .games {
+    display:grid; gap:24px; width:100%; max-width:920px;
+    grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+  }
+  .card {
+    display:flex; flex-direction:column; align-items:center; text-align:center;
+    background:rgba(26,33,44,.75); backdrop-filter:blur(10px);
+    border:2px solid rgba(255,255,255,.10); border-radius:22px;
+    padding:32px 24px 26px; text-decoration:none; color:inherit;
+    transition:transform .2s, border-color .2s, box-shadow .2s;
+    animation:cardIn .5s ease both;
+  }
+  .card:nth-child(2) { animation-delay:.12s; }
+  .card:nth-child(3) { animation-delay:.24s; }
+  @keyframes cardIn { from{opacity:0; transform:translateY(24px);} to{opacity:1; transform:none;} }
+  .card:hover, .card:active {
+    transform:translateY(-6px) scale(1.02);
+    border-color:var(--accent);
+    box-shadow:0 12px 36px rgba(0,0,0,.5), 0 0 24px var(--glow);
+  }
+  .card .icon { font-size:72px; line-height:1.2; animation:bob 2.4s ease-in-out infinite; }
+  @keyframes bob { 0%,100%{transform:translateY(0) rotate(-3deg);} 50%{transform:translateY(-8px) rotate(3deg);} }
+  .card h2 { font-size:22px; font-weight:800; margin:16px 0 8px; color:var(--accent); }
+  .card p  { font-size:13.5px; color:#aab6c6; line-height:1.6; min-height:44px; }
+  .card .play {
+    margin-top:20px; padding:12px 44px; border-radius:14px;
+    font-size:18px; font-weight:800; color:#fff;
+    background:linear-gradient(180deg, var(--accent), var(--accent-dk));
+    box-shadow:0 4px 0 var(--accent-dk), 0 6px 16px rgba(0,0,0,.4);
+    transition:transform .1s, box-shadow .1s;
+  }
+  .card:active .play { transform:translateY(3px); box-shadow:0 1px 0 var(--accent-dk); }
+  .card .tags { margin-top:12px; display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .card .tag {
+    font-size:11px; padding:3px 10px; border-radius:20px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); color:#93a1b3;
+  }
+
+  footer { margin-top:auto; padding-top:40px; font-size:12px; color:#5a6678; }
+</style>
+</head>
+<body>
+
+<h1>🎮 민찬 게임랜드</h1>
+<div class="sub">플레이할 게임을 골라보세요!</div>
+
+<div class="games" id="games"></div>
+
+<footer>민찬 프로젝트 · 게임은 계속 추가돼요 ✨</footer>
+
+<script>
+const GAMES = [
+  {
+    href: 'minchan_1/index.html',
+    icon: '🐔',
+    title: '동물 길건너',
+    desc: '소·돼지·호랑이·뱀을 피해 앞으로! 얼마나 멀리 갈 수 있을까?',
+    tags: ['3D', '아케이드', '모바일 OK'],
+    accent: '#2ecc71', accentDark: '#1e8a4c', glow: 'rgba(46,204,113,.35)',
+  },
+  {
+    href: 'minchan_2/index.html',
+    icon: '🐸',
+    title: '꼬꼬 대전쟁 × 파슬리 유니버스',
+    desc: '콜라보 한정 뽑기! 파슬리와 친구들을 모아 전투에서 승리하자.',
+    tags: ['가챠', '전투', '수집'],
+    accent: '#7be07b', accentDark: '#3d8a3d', glow: 'rgba(123,224,123,.35)',
+  },
+];
+
+const container = document.getElementById('games');
+container.innerHTML = GAMES.map(g => `
+  <a class="card" href="${g.href}" style="--accent:${g.accent}; --accent-dk:${g.accentDark}; --glow:${g.glow}">
+    <div class="icon">${g.icon}</div>
+    <h2>${g.title}</h2>
+    <p>${g.desc}</p>
+    <div class="tags">${g.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
+    <div class="play">PLAY ▶</div>
+  </a>
+`).join('');
+</script>
+
+</body>
+</html>

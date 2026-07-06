@@ -1,0 +1,7 @@
+# 도구 상태 / 테스트 산출물
+.omc/
+.playwright-mcp/
+game1-playing.jpeg
+game2-lobby.jpeg
+launcher.jpeg
+.DS_Store
