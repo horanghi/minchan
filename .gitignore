@@ -5,3 +5,5 @@ game1-playing.jpeg
 game2-lobby.jpeg
 launcher.jpeg
 .DS_Store
+.vercel
+.env*
