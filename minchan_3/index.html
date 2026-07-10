@@ -216,8 +216,9 @@
     <span><span class="sw" style="background:#b08050"></span>일반 상자</span>
     <span><span class="sw" style="background:#50a0ff"></span>레어 상자</span>
     <span><span class="sw" style="background:#ffb020"></span>전설 상자</span>
-    <span>🐉 고대 화염룡</span>
-    <span>🔥 대장간</span>
+    <span>🐉 / 🪱 보스</span>
+    <span>🏰 성문 · 🌀 귀환</span>
+    <span>🔥 대장간 · ⛺ 캠프</span>
   </div>
 </div>
 
@@ -274,8 +275,10 @@ const MATS = {
   hide:  { nm:'가죽',     icon:'🟫' },
   mana:  { nm:'마정석',   icon:'💠' },
   scale: { nm:'용의 비늘', icon:'🐲' },
+  sand:  { nm:'모래정수',  icon:'🏜️' },
+  venom: { nm:'독샘',      icon:'🧪' },
 };
-const inv = { wood:0, stone:0, iron:0, hide:0, mana:0, scale:0 };
+const inv = { wood:0, stone:0, iron:0, hide:0, mana:0, scale:0, sand:0, venom:0 };
 const ownedGear = {}; // 제작한 장비 보관함 { id: 개수 }
 
 const WEAPONS = [
@@ -285,6 +288,9 @@ const WEAPONS = [
   { id:'isw',   nm:'철검',     icon:'⚔️', atk:22, cost:{iron:5,hide:2},     color:0xc8ccd4, blade:0xe0e4ec },
   { id:'msw',   nm:'마력검',   icon:'⚔️', atk:38, cost:{mana:4,iron:3},     color:0x50c8ff, blade:0x80e0ff, glow:0x40a0ff },
   { id:'dsw',   nm:'용검',     icon:'🔥', atk:65, cost:{scale:3,mana:5},    color:0xff5030, blade:0xff8850, glow:0xff4010 },
+  { id:'vdag',  nm:'독단검',   icon:'🗡️', atk:70,  cost:{venom:3,hide:4},   color:0x3a7a30, blade:0x60c050, glow:0x40c030, world:2, poison:{dmg:12, dur:4} },
+  { id:'khop',  nm:'사막 곡도', icon:'🌙', atk:90,  cost:{sand:4,iron:6},    color:0xd8b060, blade:0xf0d890, world:2 },
+  { id:'sunsw', nm:'태양검',   icon:'☀️', atk:125, cost:{sand:8,mana:6},    color:0xffb020, blade:0xffe080, glow:0xffa010, world:2 },
 ];
 const ARMORS = [
   { id:'cloth', nm:'천 옷',     icon:'👕', def:0,  cost:{}, color:0x5a6a8a, hidden:true },
@@ -292,6 +298,8 @@ const ARMORS = [
   { id:'irona', nm:'철 갑옷',   icon:'🛡️', def:9,  cost:{iron:6},            color:0xb8bcc8 },
   { id:'manaa', nm:'마력 갑옷', icon:'🛡️', def:16, cost:{mana:5,iron:2},     color:0x4090e0, glow:0x3070ff },
   { id:'draga', nm:'용린 갑옷', icon:'🐉', def:26, cost:{scale:4},           color:0xc03020, glow:0xff3000 },
+  { id:'venoma', nm:'독 갑옷',  icon:'☠️', def:30, cost:{venom:4,hide:6},    color:0x3a7a30, glow:0x30a020, world:2, poison:{dmg:8, dur:3} },
+  { id:'dunea', nm:'사구 갑옷', icon:'🏜️', def:36, cost:{sand:6,scale:2},    color:0xd8a850, glow:0xc07818, world:2 },
 ];
 
 const P = {
@@ -311,6 +319,21 @@ const BOSS_DEF = { nm:'고대 화염룡', hp:600, atk:38, exp:400, speed:4.2, co
 
 let enemies = [], drops = [], particles = [], nodes = [], floatTexts = [];
 let boss = null;
+/* 월드 시스템 */
+let worldId = 1, world2Unlocked = false, worldGroup = null, groundMesh = null;
+let hemiLight = null, sunLight = null;
+let gateDoors = [], gateOpen = false, gateOpening = false, gatePortal = null;
+const GATE_POS = new T.Vector3(0, 0, -206);
+const W2_ENTRY = new T.Vector3(0, 0, 188);
+const W2_RETURN = new T.Vector3(0, 0, 198);
+let respawnPoint = new T.Vector3(0, 0, 0);
+
+const ENEMY_TYPES_W2 = [
+  { id:'scorp', nm:'사막 전갈',  hp:150, atk:28, exp:80,  speed:5.8, r:[15,90],   color:0xb08a4a, size:1.2, drops:[['venom',.6],['hide',.8],['sand',.5]] },
+  { id:'mummy', nm:'미라',      hp:260, atk:38, exp:120, speed:2.6, r:[60,140],  color:0xd8cbaa, size:1.6, drops:[['sand',.9],['iron',.6],['mana',.5]] },
+  { id:'dune',  nm:'모래 회오리', hp:200, atk:46, exp:150, speed:4.8, r:[110,180], color:0xe8b850, size:1.0, drops:[['sand',.95],['mana',.6]] },
+];
+const WORM_DEF = { nm:'샌드웜', hp:1400, atk:46, exp:1200, speed:4.6, color:0xc8a060, size:2.6 };
 
 /* ---------- 씬 구성 ---------- */
 function init() {
@@ -327,7 +350,7 @@ function init() {
 
   const hemi = new T.HemisphereLight(0x8fa4c8, 0x2a2018, 0.55);
   scene.add(hemi);
-  const moon = new T.DirectionalLight(0xaac4ff, 0.7);
+  const moon = new T.DirectionalLight(0xaac4ff, 0.7); // 월드2에선 사막 태양으로
   moon.position.set(40, 80, -30);
   moon.castShadow = true;
   moon.shadow.mapSize.set(2048, 2048);
@@ -336,24 +359,24 @@ function init() {
   moon.shadow.camera.far = 300;
   scene.add(moon);
 
-  // 지면
-  const gTex = groundTexture();
-  const ground = new T.Mesh(
-    new T.CircleGeometry(220, 64),
-    new T.MeshStandardMaterial({ map:gTex, roughness:1 })
-  );
-  ground.rotation.x = -Math.PI/2;
-  ground.receiveShadow = true;
-  scene.add(ground);
+  hemiLight = hemi; sunLight = moon;
 
-  buildForge();
-  buildHut();
+  // 지면 (영구, 월드에 따라 텍스처만 교체)
+  groundMesh = new T.Mesh(
+    new T.CircleGeometry(220, 64),
+    new T.MeshStandardMaterial({ map: groundTexture(1), roughness:1 })
+  );
+  groundMesh.rotation.x = -Math.PI/2;
+  groundMesh.receiveShadow = true;
+  scene.add(groundMesh);
+
+  worldGroup = new T.Group();
+  scene.add(worldGroup);
+  applyAmbience(1);
+  buildWorld1();
   buildParsley();
+  buildNurungji();
   buildPlayer();
-  scatterNodes();
-  scatterDecor();
-  scatterChests();
-  spawnBoss();
 
   clock = new T.Clock();
   addEvents();
@@ -361,21 +384,361 @@ function init() {
   animate();
 }
 
-function groundTexture() {
+function groundTexture(world) {
   const c = document.createElement('canvas'); c.width = c.height = 512;
   const x = c.getContext('2d');
-  x.fillStyle = '#1c2818'; x.fillRect(0,0,512,512);
-  for (let i=0;i<3000;i++) {
-    x.fillStyle = `rgba(${30+Math.random()*40|0},${50+Math.random()*40|0},${25+Math.random()*25|0},.5)`;
-    x.fillRect(Math.random()*512, Math.random()*512, 2+Math.random()*3, 2+Math.random()*3);
+  if (world === 2) { // 사막 모래
+    x.fillStyle = '#8a6f44'; x.fillRect(0,0,512,512);
+    for (let i=0;i<3000;i++) {
+      x.fillStyle = `rgba(${150+Math.random()*60|0},${120+Math.random()*50|0},${70+Math.random()*40|0},.5)`;
+      x.fillRect(Math.random()*512, Math.random()*512, 2+Math.random()*4, 2+Math.random()*3);
+    }
+  } else { // 숲
+    x.fillStyle = '#1c2818'; x.fillRect(0,0,512,512);
+    for (let i=0;i<3000;i++) {
+      x.fillStyle = `rgba(${30+Math.random()*40|0},${50+Math.random()*40|0},${25+Math.random()*25|0},.5)`;
+      x.fillRect(Math.random()*512, Math.random()*512, 2+Math.random()*3, 2+Math.random()*3);
+    }
   }
   const t = new T.CanvasTexture(c);
   t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(30,30);
   return t;
 }
 
+function applyAmbience(world) {
+  if (world === 2) { // 사막 황혼
+    scene.background = new T.Color(0x4a2e18);
+    scene.fog = new T.FogExp2(0x4a2e18, 0.009);
+    hemiLight.color.setHex(0xffd8a0); hemiLight.groundColor.setHex(0x6a4a28); hemiLight.intensity = 0.7;
+    sunLight.color.setHex(0xffc878); sunLight.intensity = 1.0;
+  } else { // 숲의 밤
+    scene.background = new T.Color(0x0e1420);
+    scene.fog = new T.FogExp2(0x0e1420, 0.011);
+    hemiLight.color.setHex(0x8fa4c8); hemiLight.groundColor.setHex(0x2a2018); hemiLight.intensity = 0.55;
+    sunLight.color.setHex(0xaac4ff); sunLight.intensity = 0.7;
+  }
+  groundMesh.material.map = groundTexture(world);
+  groundMesh.material.needsUpdate = true;
+}
+
+/* ---------- 월드 구성/전환 ---------- */
+function buildWorld1() {
+  SAFE_CENTER.set(0, 0, 4); SAFE_R = 12;
+  respawnPoint.set(0, 0, 0);
+  buildForge();
+  buildHut();
+  scatterNodes();
+  scatterDecor();
+  scatterChests();
+  spawnBoss();
+  buildGate();
+}
+function buildWorld2() {
+  SAFE_CENTER.copy(W2_ENTRY); SAFE_R = 10;
+  respawnPoint.copy(W2_ENTRY);
+  hutColliders = []; hutInner = null; hutRoofGroup = null; hutChimneyPos = null;
+  buildDesertCamp();
+  scatterNodes();
+  scatterDecor();
+  scatterChests();
+  spawnSandworm();
+}
+function enterWorld(id) {
+  worldId = id;
+  // 동적 오브젝트 정리
+  for (const e of enemies) scene.remove(e); enemies = []; boss = null;
+  for (const d of drops) scene.remove(d); drops = [];
+  for (const p of particles) scene.remove(p); particles = [];
+  document.getElementById('bossBar').style.display = 'none';
+  // 월드 정적물 교체
+  scene.remove(worldGroup);
+  nodes = []; chests = [];
+  gateDoors = []; gateOpening = false; gatePortal = null;
+  worldGroup = new T.Group();
+  scene.add(worldGroup);
+  applyAmbience(id);
+  if (id === 2) {
+    buildWorld2();
+    player.set(W2_ENTRY.x, 0, W2_ENTRY.z);
+    if (!world2Unlocked) {
+      world2Unlocked = true;
+      toast('🏜️ 월드 2 — 불타는 사막! 체크포인트 갱신 · 사막 장비 해금! (북쪽에 샌드웜이 산다...)', 6000);
+    } else {
+      toast('🏜️ 사막으로 돌아왔다. 체크포인트가 갱신되었습니다.', 3000);
+    }
+  } else {
+    buildWorld1();
+    player.set(0, 0, 0);
+    toast('🌲 월드 1 — 숲으로 돌아왔다. 체크포인트가 갱신되었습니다.', 3000);
+  }
+  sfx('level');
+  // 파슬리 처리
+  if (parsley) {
+    if (parsleyMode === 'ally') {
+      parsley.visible = true;
+      parsley.position.set(player.x + 1.6, 0, player.z + 0.8);
+    } else {
+      parsley.visible = (id === 1);
+      if (id === 1) parsley.position.set(5.5, 0, -1.2);
+    }
+  }
+  // 누룽지 처리 (사막 텐트 거주)
+  if (nurungji) {
+    if (nurungjiMode === 'ally') {
+      nurungji.visible = true;
+      nurungji.position.set(player.x - 1.6, 0, player.z + 0.8);
+    } else {
+      nurungji.visible = (id === 2);
+      if (id === 2) {
+        nurungji.position.set(SAFE_CENTER.x - 3.4, 0, SAFE_CENTER.z + 0.3); // 텐트 안
+        nurungji.rotation.y = Math.PI/2; // 입구 쪽 바라봄
+      }
+    }
+  }
+  refreshInv(); refreshStats();
+}
+
+/* ---------- 성문 (월드1 → 월드2) ---------- */
+function buildGate() {
+  const g = new T.Group();
+  const stone = new T.MeshStandardMaterial({ color:0x6a707c, roughness:.95, flatShading:true });
+  const doorMat = new T.MeshStandardMaterial({ color:0x4a3018, roughness:.9 });
+  // 좌우 탑
+  for (const sx of [-4.2, 4.2]) {
+    const tower = new T.Mesh(new T.CylinderGeometry(1.5, 1.8, 10, 8), stone);
+    tower.position.set(sx, 5, 0); tower.castShadow = true;
+    const cap = new T.Mesh(new T.ConeGeometry(1.9, 2.2, 8), new T.MeshStandardMaterial({ color:0x3a3f4a, roughness:.9 }));
+    cap.position.set(sx, 11, 0);
+    g.add(tower, cap);
+  }
+  // 상단 아치벽
+  const arch = new T.Mesh(new T.BoxGeometry(8.4, 3.2, 1.6), stone);
+  arch.position.set(0, 7.4, 0); arch.castShadow = true;
+  g.add(arch);
+  // 양문 (안쪽 힌지 피벗)
+  for (const side of [-1, 1]) {
+    const doorGeo = new T.BoxGeometry(2.85, 5.8, 0.35);
+    doorGeo.translate(side * 1.42, 0, 0); // 피벗을 바깥 모서리로
+    const door = new T.Mesh(doorGeo, doorMat);
+    door.position.set(-side * 2.85, 2.9, 0);
+    door.castShadow = true;
+    // 철 장식 밴드
+    for (const by of [-1.6, 0, 1.6]) {
+      const band = new T.Mesh(new T.BoxGeometry(2.7, 0.22, 0.42), new T.MeshStandardMaterial({ color:0x2a2d36, metalness:.7, roughness:.4 }));
+      band.position.set(side * 1.42, by, 0);
+      door.add(band);
+    }
+    g.add(door);
+    gateDoors.push(door);
+  }
+  // 포탈 (문이 열리면 활성화)
+  gatePortal = new T.Mesh(new T.PlaneGeometry(5.2, 5.6),
+    new T.MeshBasicMaterial({ color:0xffb040, transparent:true, opacity:0.35, side:T.DoubleSide }));
+  gatePortal.position.set(0, 2.9, -0.3);
+  gatePortal.visible = false;
+  g.add(gatePortal);
+  g.position.copy(GATE_POS);
+  worldGroup.add(g);
+  if (gateOpen) { // 이미 열린 상태로 재건축
+    gateDoors[0].rotation.y = -1.55;
+    gateDoors[1].rotation.y = 1.55;
+    gatePortal.visible = true;
+  }
+}
+function openGate() {
+  gateOpen = true; gateOpening = true;
+  toast('🏰 성문이 열렸다!! 문 너머로 뜨거운 모래바람이 분다... (문으로 들어가면 월드 2)', 6000);
+  sfx('level');
+}
+
+/* ---------- 사막 캠프 (월드2 체크포인트) ---------- */
+function buildDesertCamp() {
+  const g = new T.Group();
+  // 안전지대 링
+  safeRing = new T.Mesh(new T.RingGeometry(SAFE_R - 0.35, SAFE_R, 64),
+    new T.MeshBasicMaterial({ color:0xf0a848, transparent:true, opacity:.32, side:T.DoubleSide }));
+  safeRing.rotation.x = -Math.PI/2;
+  safeRing.position.set(SAFE_CENTER.x, 0.03, SAFE_CENTER.z);
+  g.add(safeRing);
+  // 모닥불 (돌 + 불빛)
+  for (let i=0;i<6;i++) {
+    const a = i/6*Math.PI*2;
+    const st = new T.Mesh(new T.DodecahedronGeometry(0.22, 0), new T.MeshStandardMaterial({ color:0x6a5a44, roughness:.95, flatShading:true }));
+    st.position.set(SAFE_CENTER.x + Math.cos(a)*0.8, 0.15, SAFE_CENTER.z + Math.sin(a)*0.8);
+    g.add(st);
+  }
+  const fireBall = new T.Mesh(new T.SphereGeometry(0.35, 8, 8), new T.MeshBasicMaterial({ color:0xff8830 }));
+  fireBall.position.set(SAFE_CENTER.x, 0.4, SAFE_CENTER.z);
+  forgeFire = new T.PointLight(0xff7020, 2.4, 20);
+  forgeFire.position.set(SAFE_CENTER.x, 1.4, SAFE_CENTER.z);
+  g.add(fireBall, forgeFire);
+  // 모루 (사막 대장간)
+  const anvil = new T.Mesh(new T.BoxGeometry(1.4, 0.45, 0.6), new T.MeshStandardMaterial({ color:0x3a3f4a, metalness:.8, roughness:.4 }));
+  anvil.position.set(SAFE_CENTER.x + 2.4, 0.85, SAFE_CENTER.z);
+  const anvilBase = new T.Mesh(new T.BoxGeometry(0.7, 0.7, 0.7), new T.MeshStandardMaterial({ color:0x6a5230 }));
+  anvilBase.position.set(SAFE_CENTER.x + 2.4, 0.35, SAFE_CENTER.z);
+  g.add(anvil, anvilBase);
+  // 텐트 (피라미드형 + 어두운 입구)
+  const tent = new T.Mesh(new T.ConeGeometry(2.0, 2.4, 4),
+    new T.MeshStandardMaterial({ color:0xb08a5a, roughness:.9, flatShading:true }));
+  tent.position.set(SAFE_CENTER.x - 3.4, 1.2, SAFE_CENTER.z);
+  tent.rotation.y = Math.PI/4;
+  tent.castShadow = true;
+  const doorway = new T.Mesh(new T.ConeGeometry(0.65, 1.1, 4),
+    new T.MeshBasicMaterial({ color:0x2a1c10 }));
+  doorway.position.set(SAFE_CENTER.x - 2.35, 0.55, SAFE_CENTER.z);
+  doorway.rotation.y = Math.PI/4;
+  const tentPole = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 0.7, 5),
+    new T.MeshStandardMaterial({ color:0x4a3018 }));
+  tentPole.position.set(SAFE_CENTER.x - 3.4, 2.7, SAFE_CENTER.z);
+  g.add(tent, doorway, tentPole);
+  // 귀환 포탈 (월드1로)
+  const pillars = new T.MeshStandardMaterial({ color:0x8a7048, roughness:.9, flatShading:true });
+  for (const sx of [-1.6, 1.6]) {
+    const p = new T.Mesh(new T.BoxGeometry(0.6, 4.2, 0.6), pillars);
+    p.position.set(W2_RETURN.x + sx, 2.1, W2_RETURN.z);
+    p.castShadow = true; g.add(p);
+  }
+  const lintel = new T.Mesh(new T.BoxGeometry(4.0, 0.6, 0.7), pillars);
+  lintel.position.set(W2_RETURN.x, 4.4, W2_RETURN.z);
+  const portal2 = new T.Mesh(new T.PlaneGeometry(2.6, 3.8),
+    new T.MeshBasicMaterial({ color:0x50c880, transparent:true, opacity:0.4, side:T.DoubleSide }));
+  portal2.position.set(W2_RETURN.x, 2.0, W2_RETURN.z);
+  g.add(lintel, portal2);
+  worldGroup.add(g);
+}
+
+/* ---------- 샌드웜 (월드2 최종보스, 최고급 리메이크) ---------- */
+function spawnSandworm() {
+  const g = new T.Group();
+  const s = WORM_DEF.size;
+  const skin  = new T.MeshStandardMaterial({ color:0xc8a060, roughness:.8,  flatShading:true });
+  const shell = new T.MeshStandardMaterial({ color:0x6a4e2c, roughness:.65, flatShading:true, metalness:.15 });
+  const glowM = new T.MeshStandardMaterial({ color:0xff8030, emissive:0xff5010, emissiveIntensity:1.4 });
+  const boneM = new T.MeshStandardMaterial({ color:0xf0e8d0, roughness:.45 });
+  const ud = { enemy:true, boss:true, worm:true, def:WORM_DEF, hp:WORM_DEF.hp, maxHp:WORM_DEF.hp,
+               hitCd:0, bob:0, walkPhase:0, moving:false, legs:[], arms:[],
+               wormState:'surface', wormT:6, struck:false,
+               segs:[], jaws:[], teethRings:[], glowBands:[] };
+
+  // ===== 머리 =====
+  const head = new T.Mesh(new T.SphereGeometry(1.05*s, 16, 14), skin);
+  head.position.set(0, 1.15*s, 0.9*s); head.scale.z = 1.2; head.castShadow = true;
+  g.add(head);
+  // 머리 갑각 (윗면 반구 플레이트) + 감각 돌기
+  const headPlate = new T.Mesh(new T.SphereGeometry(1.1*s, 14, 10, 0, Math.PI*2, 0, Math.PI*0.45), shell);
+  headPlate.position.copy(head.position); headPlate.scale.z = 1.2;
+  g.add(headPlate);
+  for (let i=0;i<5;i++) {
+    const a = (i/5 - 0.5) * 1.6;
+    const sensor = new T.Mesh(new T.SphereGeometry(0.07*s, 6, 5), glowM);
+    sensor.position.set(Math.sin(a)*0.85*s, 1.7*s, 0.9*s + Math.cos(a)*0.7*s);
+    g.add(sensor);
+  }
+
+  // ===== 아가리: 목구멍 + 꽃잎 턱 4장 + 회전 이빨 링 2겹 =====
+  const throat = new T.Mesh(new T.SphereGeometry(0.42*s, 10, 8),
+    new T.MeshBasicMaterial({ color:0xff6010 }));
+  throat.position.set(0, 1.15*s, 1.95*s);
+  ud.throat = throat;
+  ud.throatLight = new T.PointLight(0xff5010, 2.2, 12);
+  ud.throatLight.position.set(0, 1.15*s, 2.2*s);
+  const mouthBg = new T.Mesh(new T.CircleGeometry(0.55*s, 16), new T.MeshBasicMaterial({ color:0x1a0a04 }));
+  mouthBg.position.set(0, 1.15*s, 2.1*s);
+  g.add(mouthBg, throat, ud.throatLight);
+  // 꽃잎 턱 4장 (기습 때 활짝 벌어짐)
+  for (let i=0;i<4;i++) {
+    const holder = new T.Group();
+    holder.position.set(0, 1.15*s, 2.05*s);
+    holder.rotation.z = i * Math.PI/2 + Math.PI/4;
+    const petalGeo = new T.ConeGeometry(0.3*s, 0.85*s, 4);
+    petalGeo.translate(0, 0.42*s, 0); // 피벗 = 아가리 테두리
+    const petal = new T.Mesh(petalGeo, shell);
+    petal.position.y = 0.5*s;
+    petal.rotation.x = -1.0; // 닫힘 (앞으로 오므림)
+    // 꽃잎 안쪽 이빨
+    const fang = new T.Mesh(new T.ConeGeometry(0.07*s, 0.3*s, 5), boneM);
+    fang.position.set(0, 0.55*s, -0.14*s);
+    fang.rotation.x = -2.6;
+    petal.add(fang);
+    holder.add(petal);
+    g.add(holder);
+    ud.jaws.push(petal);
+  }
+  // 회전 이빨 링 2겹 (서로 반대 방향)
+  for (let r=0;r<2;r++) {
+    const ringG = new T.Group();
+    ringG.position.set(0, 1.15*s, (2.0 - r*0.22)*s);
+    const rad = (0.46 - r*0.13)*s;
+    for (let i=0;i<8;i++) {
+      const a = i/8*Math.PI*2;
+      const tooth = new T.Mesh(new T.ConeGeometry(0.06*s, (0.3 - r*0.06)*s, 5), boneM);
+      tooth.position.set(Math.cos(a)*rad, Math.sin(a)*rad, 0);
+      tooth.rotation.z = a - Math.PI/2;
+      tooth.rotation.x = -0.5; // 안쪽으로 굽음
+      ringG.add(tooth);
+    }
+    g.add(ringG);
+    ud.teethRings.push(ringG);
+  }
+
+  // ===== 몸통 마디 5개: 갑각 플레이트 + 등가시 + 용암 발광 띠 =====
+  const segDefs = [[1.05, -0.6], [0.95, -2.0], [0.85, -3.3], [0.74, -4.4], [0.62, -5.3]];
+  for (let i=0;i<segDefs.length;i++) {
+    const [sy, sz] = segDefs[i];
+    const r = (0.95 - i*0.13)*s;
+    const segG = new T.Group();
+    segG.position.set(0, sy*s, sz*s);
+    const seg = new T.Mesh(new T.SphereGeometry(r, 14, 12), skin);
+    seg.castShadow = true;
+    // 등 갑각 플레이트 (윗반구)
+    const plate = new T.Mesh(new T.SphereGeometry(r*1.08, 12, 8, 0, Math.PI*2, 0, Math.PI*0.42), shell);
+    // 등가시 (뒤로 휘어짐)
+    const spike = new T.Mesh(new T.ConeGeometry(r*0.18, r*0.85, 5), shell);
+    spike.position.set(0, r*0.95, -r*0.2);
+    spike.rotation.x = 0.55;
+    // 마디 사이 용암 발광 띠
+    const band = new T.Mesh(new T.TorusGeometry(r*0.92, r*0.09, 6, 20), glowM.clone());
+    band.rotation.y = Math.PI/2;
+    band.rotation.z = Math.PI/2;
+    segG.add(seg, plate, spike, band);
+    g.add(segG);
+    ud.segs.push(segG);
+    ud.glowBands.push(band);
+  }
+  // 꼬리 (가시 달린 창끝)
+  const tail = new T.Mesh(new T.ConeGeometry(0.38*s, 1.4*s, 8), shell);
+  tail.rotation.x = Math.PI/2;
+  tail.position.set(0, 0.55*s, -6.4*s);
+  g.add(tail); ud.segs.push(tail);
+
+  // ===== 지하 이동용 모래 융기 언덕 (지표를 달리는 흙더미) =====
+  ud.mound = new T.Mesh(new T.SphereGeometry(1.7*s, 12, 8),
+    new T.MeshStandardMaterial({ color:0x9a7c4c, roughness:1, flatShading:true }));
+  ud.mound.scale.set(1.2, 0.32, 1.5);
+  ud.mound.visible = false;
+  g.add(ud.mound);
+
+  g.position.set(0, 0, -150);
+  ud.body = head;
+  g.userData = ud;
+  scene.add(g);
+  boss = g; enemies.push(g);
+  document.getElementById('bossName').textContent = '🪱 샌드웜';
+}
+
+// 충격파 링 이펙트
+function shockwave(pos, color) {
+  const ring = new T.Mesh(new T.TorusGeometry(1.2, 0.24, 8, 30),
+    new T.MeshBasicMaterial({ color, transparent:true, opacity:.85 }));
+  ring.rotation.x = -Math.PI/2;
+  ring.position.set(pos.x, 0.25, pos.z);
+  ring.userData = { ring:true, life:0.8 };
+  scene.add(ring); particles.push(ring);
+}
+
 /* ---------- 대장간 (스폰 지점 / 안전지대) ---------- */
-const SAFE_CENTER = new T.Vector3(0, 0, 4), SAFE_R = 12;
+let SAFE_CENTER = new T.Vector3(0, 0, 4), SAFE_R = 12;
 let forgeFire, safeRing;
 function buildForge() {
   const g = new T.Group();
@@ -415,7 +778,7 @@ function buildForge() {
     g.add(post, lamp, lampLight);
   }
   g.position.set(0, 0, 4);
-  scene.add(g);
+  worldGroup.add(g);
 }
 
 /* ---------- 오두막 (안전지대 내, 출입 가능) ---------- */
@@ -520,7 +883,7 @@ function buildHut() {
   innerLight.position.set(cx, 1.9, cz);
   g.add(innerLight);
 
-  scene.add(g);
+  worldGroup.add(g);
 }
 /* ---------- 파슬리 NPC (오두막 주민 🐸 → 전투 동료) ---------- */
 let parsley = null, parsleyBob = 0, parsleyTalkCd = 0, parsleyGiftT = 0;
@@ -612,6 +975,7 @@ function updateParsley(dt) {
   const d = parsley.position.distanceTo(player);
 
   if (parsleyMode === 'quest') {
+    if (worldId !== 1) return; // 퀘스트 중엔 월드1 오두막에만 있음
     // ---- 오두막에서 목검을 기다리는 중 ----
     parsley.position.y = Math.abs(Math.sin(parsleyBob*2.6))*0.09;
     if (d < 7) parsley.rotation.y = Math.atan2(player.x - parsley.position.x, player.z - parsley.position.z);
@@ -700,8 +1064,188 @@ function updateParsley(dt) {
   }
 }
 
+/* ---------- 누룽지 NPC (사막 텐트의 거북이 🐢 → 전투 동료) ---------- */
+let nurungji = null, nurungjiBob = 0, nurungjiTalkCd = 0, nurungjiGiftT = 0;
+let nurungjiMode = 'quest', nurungjiAtkCd = 0, nurungjiSwing = 0, nurungjiSword = null, nurungjiHead = null;
+const NURUNGJI_LINES = [
+  '"느릿... 사막은 오늘도 뜨겁다..."',
+  '"독은... 바르는 게 아니라... 스며드는 거다... 느릿"',
+  '"샌드웜은... 붉은 링이 뜨면... 도망쳐라... 느릿"',
+  '"등딱지가... 누룽지 색이라... 누룽지다... 느릿"',
+  '"파슬리...? 그 개구리... 좋은 녀석이지... 느릿"',
+  '"서두르지 마라... 거북이도 사막을 건넌다... 느릿"',
+];
+function buildNurungji() {
+  const g = new T.Group();
+  const shellM = new T.MeshStandardMaterial({ color:0x8a5a28, roughness:.8, flatShading:true });
+  const shellD = new T.MeshStandardMaterial({ color:0x6a4218, roughness:.85 });
+  const skinM  = new T.MeshStandardMaterial({ color:0xc8b060, roughness:.9 }); // 누룽지색 피부
+  // 등딱지 돔 + 테두리
+  const shellTop = new T.Mesh(new T.SphereGeometry(0.5, 12, 8, 0, Math.PI*2, 0, Math.PI*0.5), shellM);
+  shellTop.position.y = 0.42; shellTop.castShadow = true;
+  const rim = new T.Mesh(new T.CylinderGeometry(0.53, 0.56, 0.13, 12), shellD);
+  rim.position.y = 0.4;
+  g.add(shellTop, rim);
+  // 딱지 무늬 (누룽지 조각처럼)
+  const scuteTop = new T.Mesh(new T.CylinderGeometry(0.14, 0.16, 0.05, 6), shellD);
+  scuteTop.position.y = 0.9;
+  g.add(scuteTop);
+  for (let i=0;i<5;i++) {
+    const a = i/5*Math.PI*2;
+    const scute = new T.Mesh(new T.CylinderGeometry(0.1, 0.12, 0.04, 6), shellD);
+    scute.position.set(Math.cos(a)*0.3, 0.66, Math.sin(a)*0.3);
+    scute.rotation.set(Math.sin(a)*0.55, 0, -Math.cos(a)*0.55);
+    g.add(scute);
+  }
+  // 머리 (졸린 눈)
+  nurungjiHead = new T.Group();
+  const hd = new T.Mesh(new T.SphereGeometry(0.2, 10, 8), skinM);
+  hd.castShadow = true;
+  nurungjiHead.add(hd);
+  for (const sx of [-0.09, 0.09]) {
+    const eye = new T.Mesh(new T.SphereGeometry(0.055, 8, 6),
+      new T.MeshStandardMaterial({ color:0xf5f2e8 }));
+    eye.position.set(sx, 0.05, 0.15);
+    const pupil = new T.Mesh(new T.SphereGeometry(0.028, 6, 5), new T.MeshBasicMaterial({ color:0x201a10 }));
+    pupil.position.set(0, -0.005, 0.045); eye.add(pupil);
+    const lid = new T.Mesh(new T.SphereGeometry(0.062, 8, 4, 0, Math.PI*2, 0, Math.PI*0.4), skinM);
+    lid.position.set(sx, 0.075, 0.15);
+    nurungjiHead.add(eye, lid);
+  }
+  nurungjiHead.position.set(0, 0.42, 0.56);
+  g.add(nurungjiHead);
+  // 다리 4개 + 꼬리
+  for (const [lx, lz] of [[0.32,0.28],[-0.32,0.28],[0.32,-0.28],[-0.32,-0.28]]) {
+    const leg = new T.Mesh(new T.CylinderGeometry(0.09, 0.11, 0.26, 7), skinM);
+    leg.position.set(lx, 0.13, lz);
+    g.add(leg);
+  }
+  const tail = new T.Mesh(new T.ConeGeometry(0.07, 0.22, 6), skinM);
+  tail.rotation.x = Math.PI/2 + 0.4;
+  tail.position.set(0, 0.28, -0.58);
+  g.add(tail);
+  g.scale.setScalar(1.2);
+  g.visible = false; // 월드2 텐트에서 등장
+  scene.add(g);
+  nurungji = g;
+}
+function becomeNurungjiAlly(how) {
+  nurungjiMode = 'ally';
+  // 손(?)에 작은 독단검 장착
+  nurungjiSword = new T.Group();
+  nurungjiSword.position.set(0.42, 0.4, 0.28);
+  const nGrip = new T.Mesh(new T.CylinderGeometry(0.025, 0.025, 0.13, 6),
+    new T.MeshStandardMaterial({ color:0x3a2812, roughness:.9 }));
+  nGrip.position.y = 0.05;
+  const nBlade = new T.Mesh(new T.BoxGeometry(0.06, 0.4, 0.03),
+    new T.MeshStandardMaterial({ color:0x60c050, emissive:0x30a020, emissiveIntensity:.7 }));
+  nBlade.position.y = 0.34;
+  nurungjiSword.add(nGrip, nBlade);
+  nurungjiSword.rotation.x = 0.4;
+  nurungji.add(nurungjiSword);
+  burst(nurungji.position.clone().setY(1.0), 0x60c050, 26);
+  sfx('level');
+  floatText(nurungji.position, '🐢 "고맙다... 이제... 같이 싸운다... 느릿!!"', '#7ad080');
+  toast(how === 'hand'
+    ? '🐢 인벤토리의 독단검을 누룽지에게 건네줬다! 누룽지가 동료가 되었다!'
+    : '🐢 누룽지가 동료가 되었다!', 4000);
+}
+function updateNurungji(dt) {
+  if (!nurungji || !nurungji.visible) {
+    // 퀘스트 중인데 월드2가 아니면 대기
+    if (nurungji && nurungjiMode === 'ally') nurungji.visible = true;
+    else return;
+  }
+  nurungjiBob += dt;
+  nurungjiTalkCd -= dt; nurungjiGiftT -= dt; nurungjiAtkCd -= dt;
+  const d = nurungji.position.distanceTo(player);
+  // 졸린 머리 끄덕임
+  if (nurungjiHead) nurungjiHead.rotation.x = Math.sin(nurungjiBob*1.1)*0.12;
+
+  if (nurungjiMode === 'quest') {
+    if (worldId !== 2) return; // 사막 텐트에만 있음
+    if (d < 7) nurungji.rotation.y = Math.atan2(player.x - nurungji.position.x, player.z - nurungji.position.z);
+    if (gameStarted && !isDead && d < 2.8 && nurungjiTalkCd <= 0) {
+      nurungjiTalkCd = 6;
+      if ((ownedGear.vdag || 0) > 0) {
+        ownedGear.vdag--;
+        if (P.weapon.id === 'vdag' && ownedGear.vdag === 0) {
+          P.weapon = WEAPONS[0];
+          buildSword(); refreshStats();
+        }
+        refreshInv();
+        becomeNurungjiAlly('hand');
+      } else {
+        floatText(nurungji.position, '🐢 "독단검... 하나만... 만들어줄래...? 전갈들이... 자꾸 괴롭힌다... 느릿"', '#7ad080');
+        toast('🐢 누룽지의 부탁: 독단검을 주자! (독샘 3 + 가죽 4로 제작해서 가져오기)', 3500);
+      }
+    }
+    return;
+  }
+
+  // ---- 동료 모드: 추격 + 독 공격 ----
+  let target = null, best = 9;
+  for (const e of enemies) {
+    const dd = e.position.distanceTo(nurungji.position);
+    if (dd < best) { best = dd; target = e; }
+  }
+  let moveTo = null, stopAt = 0;
+  if (target && d < 15) { moveTo = target.position; stopAt = target.userData.boss ? 3.8 : 1.4; }
+  else if (d > 3.6)     { moveTo = player;          stopAt = 3.0; }
+  let movingFlag = false;
+  if (moveTo && gameStarted && !isDead) {
+    const dir = moveTo.clone().sub(nurungji.position); dir.y = 0;
+    if (dir.length() > stopAt) {
+      dir.normalize();
+      nurungji.position.x += dir.x * 6.5 * dt; // 의외로 빠른 거북이
+      nurungji.position.z += dir.z * 6.5 * dt;
+      nurungji.rotation.y = Math.atan2(dir.x, dir.z);
+      movingFlag = true;
+    }
+  }
+  // 뒤뚱뒤뚱 걷기
+  nurungji.rotation.z = movingFlag ? Math.sin(nurungjiBob*8)*0.1 : 0;
+  nurungji.position.y = movingFlag ? Math.abs(Math.sin(nurungjiBob*8))*0.07 : 0;
+
+  // 공격 (독 부여!)
+  if (target && best < (target.userData.boss ? 4.2 : 1.8) && nurungjiAtkCd <= 0 && gameStarted && !isDead) {
+    nurungjiAtkCd = 1.2;
+    nurungjiSwing = 0.25;
+    nurungji.rotation.y = Math.atan2(target.position.x - nurungji.position.x, target.position.z - nurungji.position.z);
+    const dmg = 7 + Math.floor(P.lv * 1.2);
+    target.userData.hp -= dmg;
+    if (!target.userData.poison) target.userData.poison = { t: 3, tick: 1, dmg: 8 }; // 독단검 중독
+    burst(target.position.clone().setY(1.0), 0x60c050, 8);
+    floatText(target.position, `-${dmg} 🐢☠️`, '#7ad080');
+    sfx('hit');
+    if (Math.random() < 0.15) floatText(nurungji.position, '🐢 "느릿... 하지만 확실하게..."', '#7ad080');
+    if (target.userData.hp <= 0) killEnemy(target);
+  }
+  if (nurungjiSword) {
+    if (nurungjiSwing > 0) {
+      nurungjiSwing -= dt;
+      nurungjiSword.rotation.x = -Math.sin((0.25 - nurungjiSwing)/0.25*Math.PI)*1.5;
+    } else nurungjiSword.rotation.x = 0.4;
+  }
+  // 평화 시 잡담/선물
+  if (gameStarted && !isDead && !target && d < 2.8 && nurungjiTalkCd <= 0) {
+    nurungjiTalkCd = 9;
+    if (nurungjiGiftT <= 0) {
+      nurungjiGiftT = 90;
+      const m = ['sand','venom','iron'][Math.floor(Math.random()*3)];
+      const n = 1 + Math.floor(Math.random()*2);
+      inv[m] += n; refreshInv();
+      floatText(nurungji.position, `🐢 "선물이다... 느릿" +${n} ${MATS[m].icon}${MATS[m].nm}`, '#7ad080');
+      sfx('chest');
+    } else {
+      floatText(nurungji.position, '🐢 ' + NURUNGJI_LINES[Math.floor(Math.random()*NURUNGJI_LINES.length)], '#7ad080');
+    }
+  }
+}
+
 // 원-박스 충돌: 벽은 못 뚫고 문으로만 출입
 function collideHut() {
+  if (worldId !== 1) return;
   const r = 0.45;
   for (const b of hutColliders) {
     const nx = Math.max(b.minX, Math.min(player.x, b.maxX));
@@ -876,6 +1420,9 @@ function buildSword() {
     isw:{ bw:.17, bl:1.25, th:.05, tip:true,  rough:.25, metal:.85, fuller:true,  gem:false, jag:false },
     msw:{ bw:.16, bl:1.35, th:.05, tip:true,  rough:.2,  metal:.9,  fuller:true,  gem:true,  jag:false },
     dsw:{ bw:.19, bl:1.45, th:.06, tip:true,  rough:.3,  metal:.8,  fuller:true,  gem:true,  jag:true  },
+    vdag:{ bw:.12, bl:0.85, th:.04, tip:true,  rough:.3,  metal:.7,  fuller:true,  gem:true,  jag:false },
+    khop:{ bw:.21, bl:1.3,  th:.05, tip:true,  rough:.25, metal:.85, fuller:true,  gem:false, jag:false },
+    sunsw:{bw:.18, bl:1.55, th:.05, tip:true,  rough:.2,  metal:.9,  fuller:true,  gem:true,  jag:false },
   }[w.id];
 
   const sw = new T.Group();
@@ -950,6 +1497,49 @@ function scatterDecor() {
     const a = Math.random()*Math.PI*2, r = 10 + Math.random()*205;
     const x = Math.cos(a)*r, z = Math.sin(a)*r;
     const roll = Math.random();
+    if (worldId === 2) {
+      // ---- 사막 장식 ----
+      if (roll < 0.45) {
+        // 선인장 (몸통 + 팔 1~2개)
+        const cac = new T.Group();
+        const cMat = new T.MeshStandardMaterial({color:0x4a8a3a, roughness:.85});
+        const body2 = new T.Mesh(new T.CylinderGeometry(0.22, 0.26, 1.3 + Math.random()*0.7, 8), cMat);
+        body2.position.y = 0.75;
+        const cap = new T.Mesh(new T.SphereGeometry(0.22, 8, 6), cMat);
+        cap.position.y = body2.position.y + 0.68;
+        cac.add(body2, cap);
+        for (let j=0;j<1+Math.floor(Math.random()*2);j++) {
+          const side = j===0 ? 1 : -1;
+          const arm = new T.Mesh(new T.CylinderGeometry(0.12, 0.13, 0.55, 6), cMat);
+          arm.position.set(side*0.34, 0.85 + Math.random()*0.3, 0);
+          arm.rotation.z = -side*0.5;
+          cac.add(arm);
+        }
+        cac.position.set(x, 0, z);
+        cac.rotation.y = Math.random()*Math.PI*2;
+        worldGroup.add(cac);
+      } else if (roll < 0.75) {
+        // 마른풀
+        const tuft = new T.Group();
+        for (let j=0;j<3;j++) {
+          const blade = new T.Mesh(new T.ConeGeometry(0.05, 0.45 + Math.random()*0.3, 4),
+            new T.MeshStandardMaterial({color:[0xb0985a, 0xc0a868, 0x9a8450][j%3], roughness:1}));
+          blade.position.set((Math.random()-0.5)*0.3, 0.25, (Math.random()-0.5)*0.3);
+          blade.rotation.z = (Math.random()-0.5)*0.7;
+          tuft.add(blade);
+        }
+        tuft.position.set(x, 0, z);
+        worldGroup.add(tuft);
+      } else {
+        // 사막 자갈
+        const peb2 = new T.Mesh(new T.DodecahedronGeometry(0.12 + Math.random()*0.12, 0),
+          new T.MeshStandardMaterial({color:0x96805a, roughness:.95, flatShading:true}));
+        peb2.position.set(x, 0.08, z);
+        peb2.rotation.set(Math.random()*3, Math.random()*3, 0);
+        worldGroup.add(peb2);
+      }
+      continue;
+    }
     if (roll < 0.55) {
       // 풀 다발 (3잎, 랜덤 기울기)
       const tuft = new T.Group();
@@ -962,7 +1552,7 @@ function scatterDecor() {
         tuft.add(blade);
       }
       tuft.position.set(x, 0, z);
-      scene.add(tuft);
+      worldGroup.add(tuft);
     } else if (roll < 0.8) {
       // 들꽃 (줄기 + 꽃송이)
       const fg = new T.Group();
@@ -974,14 +1564,14 @@ function scatterDecor() {
       bloom.position.y = 0.44;
       fg.add(stem, bloom);
       fg.position.set(x, 0, z);
-      scene.add(fg);
+      worldGroup.add(fg);
     } else {
       // 자갈
       const peb = new T.Mesh(new T.DodecahedronGeometry(0.12 + Math.random()*0.1, 0),
         new T.MeshStandardMaterial({color:0x5a5f68, roughness:.95, flatShading:true}));
       peb.position.set(x, 0.08, z);
       peb.rotation.set(Math.random()*3, Math.random()*3, 0);
-      scene.add(peb);
+      worldGroup.add(peb);
     }
   }
 }
@@ -1035,7 +1625,7 @@ function makeChest(grade, x, z) {
   g.position.set(x, 0, z);
   g.rotation.y = Math.random()*Math.PI*2;
   g.userData = { chest:true, grade, lid, opened:false };
-  scene.add(g); chests.push(g);
+  worldGroup.add(g); chests.push(g);
 }
 function openChest(c) {
   const grade = c.userData.grade;
@@ -1064,8 +1654,9 @@ function openChest(c) {
   floatText(c.position, txt.join('  '), grade==='legend' ? '#ffb020' : '#f0d8a0');
   if (grade === 'legend') toast(`✨ 전설 보물상자 개봉! ${txt.join(', ')}`, 3500);
   // 잠시 후 제거 → 다른 곳에 리스폰
-  setTimeout(() => { scene.remove(c); const i = chests.indexOf(c); if (i>=0) chests.splice(i,1); }, 2500);
-  setTimeout(() => spawnChest(grade), 60000);
+  setTimeout(() => { if (c.parent) c.parent.remove(c); const i = chests.indexOf(c); if (i>=0) chests.splice(i,1); }, 2500);
+  const chestWorld = worldId;
+  setTimeout(() => { if (worldId === chestWorld) spawnChest(grade); }, 60000);
 }
 function updateChests(dt) {
   for (const c of chests) {
@@ -1081,7 +1672,8 @@ function updateChests(dt) {
 /* ---------- 적 스폰 ---------- */
 function spawnEnemies() {
   if (enemies.length >= 26) return;
-  const t = ENEMY_TYPES[Math.floor(Math.random()*ENEMY_TYPES.length)];
+  const list = worldId === 2 ? ENEMY_TYPES_W2 : ENEMY_TYPES;
+  const t = list[Math.floor(Math.random()*list.length)];
   const a = Math.random()*Math.PI*2;
   const r = t.r[0] + Math.random()*(t.r[1]-t.r[0]);
   const x = Math.cos(a)*r, z = Math.sin(a)*r;
@@ -1110,8 +1702,9 @@ function makeEnemy(t, x, z) {
   const ud = { enemy:true, def:t, hp:t.hp, maxHp:t.hp, hitCd:0,
                bob:Math.random()*6, walkPhase:Math.random()*6, moving:false, legs:[], arms:[] };
   let bodyMesh;
+  const kind = t.model || t.id;
 
-  if (t.id==='slime') {
+  if (kind==='slime') {
     // ---- 슬라임: 반투명 젤리 + 눈/입 + 내부 코어 ----
     const jelly = new T.MeshStandardMaterial({color:t.color, roughness:.2, transparent:true, opacity:.9, emissive:t.color, emissiveIntensity:.18});
     bodyMesh = new T.Mesh(new T.SphereGeometry(0.8*s, 20, 16), jelly);
@@ -1131,7 +1724,7 @@ function makeEnemy(t, x, z) {
     mouth.position.set(0, -0.08*s, 0.75*s); mouth.scale.set(1.4, 0.7, 0.4);
     bodyMesh.add(mouth);
 
-  } else if (t.id==='wolf') {
+  } else if (kind==='wolf') {
     // ---- 들개: 4관절 다리 + 흔들리는 꼬리 + 귀/주둥이 (전방 = +Z) ----
     const fur  = new T.MeshStandardMaterial({color:t.color, roughness:.9});
     const dark = new T.MeshStandardMaterial({color:0x4a3f34, roughness:.9});
@@ -1162,7 +1755,7 @@ function makeEnemy(t, x, z) {
     ud.tail.position.set(0, 1.0*s, -0.72*s); ud.tail.rotation.x = -0.5;
     g.add(ud.tail);
 
-  } else if (t.id==='golem') {
+  } else if (kind==='golem') {
     // ---- 골렘: 관절 팔다리 + 어깨바위 + 등 크리스탈 ----
     const rockM = new T.MeshStandardMaterial({color:t.color, roughness:.95});
     const darkM = new T.MeshStandardMaterial({color:0x4a505e, roughness:.95});
@@ -1188,6 +1781,107 @@ function makeEnemy(t, x, z) {
       const leg = limb(0.34*s, 0.75*s, 0.36*s, darkM, sx*s, 0.75*s, 0);
       g.add(leg); ud.legs.push(leg);
     }
+
+  } else if (kind==='scorp') {
+    // ---- 사막 전갈: 집게 + 6다리 + 독침 꼬리 ----
+    const shell = new T.MeshStandardMaterial({color:t.color, roughness:.8, flatShading:true});
+    const dark  = new T.MeshStandardMaterial({color:0x6a5230, roughness:.85});
+    bodyMesh = new T.Mesh(new T.SphereGeometry(0.7*s, 12, 10), shell);
+    bodyMesh.scale.set(1, 0.55, 1.4);
+    bodyMesh.position.y = 0.45*s;
+    // 집게팔 2개
+    for (const sx of [-0.55, 0.55]) {
+      const armG = new T.Group();
+      const arm = new T.Mesh(new T.BoxGeometry(0.18*s, 0.14*s, 0.5*s), dark);
+      arm.position.z = 0.25*s;
+      const claw = new T.Mesh(new T.SphereGeometry(0.22*s, 8, 6), shell);
+      claw.scale.set(0.8, 0.6, 1.2); claw.position.z = 0.62*s;
+      const pinc = new T.Mesh(new T.ConeGeometry(0.07*s, 0.26*s, 5), dark);
+      pinc.rotation.x = Math.PI/2; pinc.position.set(0, 0.04*s, 0.88*s);
+      armG.add(arm, claw, pinc);
+      armG.position.set(sx*s, 0.4*s, 0.75*s);
+      armG.rotation.y = sx > 0 ? -0.25 : 0.25;
+      g.add(armG); ud.arms.push(armG);
+    }
+    // 다리 6개 (스키터)
+    for (const [lx, lz] of [[0.5,0.35],[-0.5,0.35],[0.55,0],[-0.55,0],[0.5,-0.35],[-0.5,-0.35]]) {
+      const leg = limb(0.08*s, 0.42*s, 0.08*s, dark, lx*s, 0.45*s, lz*s);
+      leg.rotation.z = lx > 0 ? 0.45 : -0.45;
+      g.add(leg); ud.legs.push(leg);
+    }
+    // 등 위로 아치를 그리는 꼬리 + 발광 독침
+    const tail = new T.Group();
+    const pts = [[-0.75, 0.55], [-1.0, 0.95], [-1.02, 1.35], [-0.85, 1.68]];
+    for (let i=0;i<4;i++) {
+      const seg = new T.Mesh(new T.SphereGeometry((0.17 - 0.02*i)*s, 8, 6), i%2 ? dark : shell);
+      seg.position.set(0, pts[i][1]*s, pts[i][0]*s);
+      tail.add(seg);
+    }
+    const sting = new T.Mesh(new T.ConeGeometry(0.08*s, 0.32*s, 6),
+      new T.MeshStandardMaterial({color:0x50c840, emissive:0x2a8020, emissiveIntensity:.7}));
+    sting.position.set(0, 1.78*s, -0.68*s);
+    sting.rotation.x = 2.5;
+    tail.add(sting);
+    g.add(tail); ud.tail = tail;
+
+  } else if (kind==='mummy') {
+    // ---- 미라: 붕대 감긴 몸 + 앞으로 뻗은 팔 + 청록 눈 ----
+    const wrap  = new T.MeshStandardMaterial({color:0xd8cbaa, roughness:1});
+    const wrapD = new T.MeshStandardMaterial({color:0xb0a480, roughness:1});
+    bodyMesh = new T.Mesh(new T.BoxGeometry(0.9*s, 1.2*s, 0.5*s), wrap);
+    bodyMesh.position.y = 1.3*s;
+    // 붕대 가로줄 4개 (살짝 비뚤게)
+    for (let i=0;i<4;i++) {
+      const band = new T.Mesh(new T.BoxGeometry(0.94*s, 0.09*s, 0.54*s), wrapD);
+      band.position.y = (0.85 + i*0.3)*s;
+      band.rotation.z = (Math.random()-0.5)*0.14;
+      g.add(band);
+    }
+    const head = new T.Mesh(new T.BoxGeometry(0.5*s, 0.5*s, 0.5*s), wrap);
+    head.position.y = 2.2*s; head.castShadow = true; g.add(head);
+    const headBand = new T.Mesh(new T.BoxGeometry(0.54*s, 0.1*s, 0.54*s), wrapD);
+    headBand.position.y = 2.28*s; headBand.rotation.y = 0.15; g.add(headBand);
+    for (const sx of [-0.12, 0.12]) {
+      const eye = new T.Mesh(new T.SphereGeometry(0.06*s), new T.MeshBasicMaterial({color:0x40e0c0}));
+      eye.position.set(sx*s, 2.24*s, 0.26*s); g.add(eye);
+    }
+    // 늘어진 붕대 자락
+    const loose = new T.Mesh(new T.BoxGeometry(0.09*s, 0.6*s, 0.03*s), wrapD);
+    loose.position.set(0.32*s, 1.9*s, 0.22*s); loose.rotation.z = 0.25; g.add(loose);
+    // 앞으로 뻗은 좀비 팔
+    ud.mummyArms = [];
+    for (const sx of [-0.58, 0.58]) {
+      const armGeo = new T.BoxGeometry(0.22*s, 0.22*s, 0.95*s);
+      armGeo.translate(0, 0, 0.47*s);
+      const arm = new T.Mesh(armGeo, wrap);
+      arm.position.set(sx*s, 1.8*s, 0.25*s);
+      arm.castShadow = true;
+      g.add(arm); ud.mummyArms.push(arm);
+    }
+    // 끌듯이 걷는 다리
+    for (const sx of [-0.24, 0.24]) {
+      const leg = limb(0.26*s, 0.7*s, 0.26*s, wrapD, sx*s, 0.7*s, 0);
+      g.add(leg); ud.legs.push(leg);
+    }
+
+  } else if (kind==='dune') {
+    // ---- 모래 회오리: 3단 회전 링 + 발광 코어 ----
+    bodyMesh = new T.Mesh(new T.SphereGeometry(0.32*s, 10, 8),
+      new T.MeshStandardMaterial({color:0xffe0a0, emissive:0xd8a040, emissiveIntensity:.9}));
+    bodyMesh.position.y = 1.75;
+    ud.rings = [];
+    for (let i=0;i<3;i++) {
+      const ring = new T.Mesh(new T.TorusGeometry((0.32 + i*0.26)*s, 0.1*s, 6, 14),
+        new T.MeshStandardMaterial({color:0xd8b070, roughness:.9, transparent:true, opacity:.75, flatShading:true}));
+      ring.rotation.x = Math.PI/2;
+      ring.position.y = 1.35 - i*0.45;
+      g.add(ring); ud.rings.push(ring);
+    }
+    for (const sx of [-0.15, 0.15]) {
+      const eye = new T.Mesh(new T.SphereGeometry(0.06*s), new T.MeshBasicMaterial({color:0x4a2808}));
+      eye.position.set(sx*s, 1.82, 0.28*s); g.add(eye);
+    }
+    const dl = new T.PointLight(0xe8b850, 0.9, 8); dl.position.y = 1.6; g.add(dl);
 
   } else {
     // ---- 마령: 발광 코어 + 유령 꼬리 + 궤도 파편 ----
@@ -1218,7 +1912,12 @@ function makeEnemy(t, x, z) {
   g.add(bodyMesh);
   g.position.set(x, 0, z);
   ud.body = bodyMesh;
-  ud.hpBar = mkHpBar((t.id==='golem' ? 2.7 : t.id==='wisp' ? 2.5 : 2.0) * (t.id==='wisp' ? 1 : t.size));
+  const barY = kind==='golem'||kind==='mummy' ? 2.7*t.size
+             : kind==='wisp' ? 2.5
+             : kind==='dune' ? 2.4
+             : kind==='scorp' ? 2.2*t.size
+             : 2.0*t.size;
+  ud.hpBar = mkHpBar(barY);
   g.add(ud.hpBar);
   g.userData = ud;
   scene.add(g);
@@ -1229,7 +1928,7 @@ function spawnBoss() {
   const s = BOSS_DEF.size;
   const mat   = new T.MeshStandardMaterial({ color:BOSS_DEF.color, roughness:.55, emissive:0x400800, emissiveIntensity:.5 });
   const darkM = new T.MeshStandardMaterial({ color:0x701410, roughness:.7 });
-  const ud = { enemy:true, boss:true, def:BOSS_DEF, hp:BOSS_DEF.hp, maxHp:BOSS_DEF.hp, hitCd:0,
+  const ud = { enemy:true, boss:true, dragon:true, def:BOSS_DEF, hp:BOSS_DEF.hp, maxHp:BOSS_DEF.hp, hitCd:0,
                bob:0, walkPhase:0, moving:false, legs:[], arms:[],
                breathCd:4, breathState:0, breathT:0, breathDir:new T.Vector3(), jawOverride:null };
 
@@ -1292,6 +1991,7 @@ function spawnBoss() {
   g.userData = ud;
   scene.add(g);
   boss = g; enemies.push(g);
+  document.getElementById('bossName').textContent = '🐉 고대 화염룡';
 }
 
 /* ---------- 입력 ---------- */
@@ -1505,9 +2205,15 @@ function drawMap() {
   ctx.clearRect(0, 0, size, size);
   // 지형 (원형 대륙 + 외곽 어두움)
   const grad = ctx.createRadialGradient(c, c, 30, c, c, 220*s);
-  grad.addColorStop(0, '#26381f');
-  grad.addColorStop(0.7, '#1c2a18');
-  grad.addColorStop(1, '#12190f');
+  if (worldId === 2) {
+    grad.addColorStop(0, '#8a6f44');
+    grad.addColorStop(0.7, '#6a5434');
+    grad.addColorStop(1, '#4a3a22');
+  } else {
+    grad.addColorStop(0, '#26381f');
+    grad.addColorStop(0.7, '#1c2a18');
+    grad.addColorStop(1, '#12190f');
+  }
   ctx.fillStyle = grad;
   ctx.beginPath(); ctx.arc(c, c, 220*s, 0, Math.PI*2); ctx.fill();
   ctx.strokeStyle = '#5a4a2e'; ctx.lineWidth = 3; ctx.stroke();
@@ -1518,11 +2224,21 @@ function drawMap() {
   ctx.fillStyle = '#8a8272'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('N', c, c - 220*s + 18);
   const W2M = (x, z) => [c + x*s, c + z*s];
-  // 대장간 + 오두막
-  const [fx, fy] = W2M(0, 4);
-  ctx.font = '18px sans-serif'; ctx.fillText('🔥', fx, fy + 6);
-  const [hx, hy] = W2M(5.5, -2);
-  ctx.fillText('🏠', hx, hy + 6);
+  // 거점 아이콘 (월드별)
+  ctx.font = '18px sans-serif';
+  if (worldId === 1) {
+    const [fx, fy] = W2M(0, 4);
+    ctx.fillText('🔥', fx, fy + 6);
+    const [hx, hy] = W2M(5.5, -2);
+    ctx.fillText('🏠', hx, hy + 6);
+    const [gx, gy] = W2M(GATE_POS.x, GATE_POS.z);
+    ctx.fillText(gateOpen ? '🏰' : '🚪', gx, gy + 6);
+  } else {
+    const [fx, fy] = W2M(SAFE_CENTER.x, SAFE_CENTER.z);
+    ctx.fillText('⛺', fx, fy + 6);
+    const [rx, ry] = W2M(W2_RETURN.x, W2_RETURN.z);
+    ctx.fillText('🌀', rx, ry + 6);
+  }
   // 보물상자 (미개봉만)
   for (const ch of chests) {
     if (ch.userData.opened) continue;
@@ -1536,10 +2252,11 @@ function drawMap() {
       ctx.strokeRect(mx-7, my-7, 14, 14);
     }
   }
-  // 용 (보스 생존 시)
+  // 보스 (생존 시)
   if (boss) {
     const [bx, by] = W2M(boss.position.x, boss.position.z);
-    ctx.font = '24px sans-serif'; ctx.fillText('🐉', bx, by + 8);
+    ctx.font = '24px sans-serif';
+    ctx.fillText(worldId === 2 ? '🪱' : '🐉', bx, by + 8);
   }
   // 플레이어 화살표 (바라보는 방향)
   const [px, py] = W2M(player.x, player.z);
@@ -1572,6 +2289,7 @@ function attack() {
   const range = 3.2;
   // 적 타격
   for (const e of enemies) {
+    if (e.userData.worm && e.userData.wormState !== 'surface') continue; // 지하의 샌드웜은 못 때림
     const d = e.position.clone().sub(player); d.y = 0;
     if (d.length() < range + (e.userData.boss?2.5:0.8) && d.normalize().dot(fwd) > 0.25) {
       hitEnemy(e);
@@ -1591,9 +2309,10 @@ function attack() {
         inv[n.userData.mat] += cnt;
         sfx('gather');
         floatText(n.position, `+${cnt} ${MATS[n.userData.mat].nm}`, '#f0a848');
-        scene.remove(n); nodes.splice(i,1);
+        worldGroup.remove(n); nodes.splice(i,1);
         refreshInv();
-        setTimeout(() => respawnNode(), 15000);
+        const nodeWorld = worldId;
+        setTimeout(() => { if (worldId === nodeWorld) respawnNode(); }, 15000);
       }
       break; // 한 번에 노드 하나만
     }
@@ -1632,7 +2351,18 @@ function buildNodeAt(type, x, z) {
       g.add(root);
     }
     const leafM = c => new T.MeshStandardMaterial({color:c, roughness:.9, flatShading:true});
-    if (Math.random() < 0.5) {
+    if (worldId === 2) {
+      // 사막 마른나무: 잎 없이 앙상한 가지
+      trunk.material = new T.MeshStandardMaterial({color:0x4a3a26, roughness:1});
+      for (let i=0;i<3;i++) {
+        const a = i/3*Math.PI*2 + Math.random();
+        const br = new T.Mesh(new T.CylinderGeometry(0.05, 0.1, 1.4, 5), trunk.material);
+        br.position.set(Math.cos(a)*0.5, 2.6 + i*0.25, Math.sin(a)*0.5);
+        br.rotation.z = Math.cos(a)*0.9;
+        br.rotation.x = -Math.sin(a)*0.9;
+        g.add(br);
+      }
+    } else if (Math.random() < 0.5) {
       // 침엽수: 3단 콘 (아래로 갈수록 넓고 어두움)
       const shades = [0x24522a, 0x2e6332, 0x3a763c];
       for (let i=0;i<3;i++) {
@@ -1651,7 +2381,7 @@ function buildNodeAt(type, x, z) {
       l3.position.set(-0.85, 3.4, -0.4);
       for (const l of [l1,l2,l3]) { l.castShadow = true; l.rotation.set(Math.random(),Math.random(),0); g.add(l); }
     }
-    g.userData = { node:true, type, hp:3, mat:'wood', nm:'나무' };
+    g.userData = { node:true, type, hp:3, mat:'wood', nm: worldId===2 ? '마른나무' : '나무' };
     g.rotation.y = Math.random()*Math.PI*2;
     g.scale.setScalar(0.85 + Math.random()*0.4);
 
@@ -1665,17 +2395,20 @@ function buildNodeAt(type, x, z) {
       m.castShadow = true;
       return m;
     };
-    g.add(mkRock(1.05, 0x6d727e, 0, 0.8, 0));
-    g.add(mkRock(0.55, 0x7d838f, 0.95, 0.38, 0.3));
-    g.add(mkRock(0.42, 0x5c616a, -0.8, 0.3, -0.35));
+    const RC = worldId === 2
+      ? [0xb89a6a, 0xc8ac7c, 0x96805a, 0x8a7454]   // 사암
+      : [0x6d727e, 0x7d838f, 0x5c616a, 0x565b64];  // 화강암
+    g.add(mkRock(1.05, RC[0], 0, 0.8, 0));
+    g.add(mkRock(0.55, RC[1], 0.95, 0.38, 0.3));
+    g.add(mkRock(0.42, RC[2], -0.8, 0.3, -0.35));
     for (let i=0;i<4;i++)
-      g.add(mkRock(0.13 + Math.random()*0.1, 0x565b64, (Math.random()-0.5)*2.6, 0.1, (Math.random()-0.5)*2.6));
+      g.add(mkRock(0.13 + Math.random()*0.1, RC[3], (Math.random()-0.5)*2.6, 0.1, (Math.random()-0.5)*2.6));
     g.userData = { node:true, type, hp:3, mat:'stone', nm:'바위' };
     g.rotation.y = Math.random()*Math.PI*2;
 
   } else {
     // ---- 철광맥: 어두운 암반에 박힌 발광 광석 결정 ----
-    const darkRock = new T.MeshStandardMaterial({color:0x453f34, roughness:.9, flatShading:true});
+    const darkRock = new T.MeshStandardMaterial({color: worldId===2 ? 0x8a7048 : 0x453f34, roughness:.9, flatShading:true});
     const base = new T.Mesh(new T.DodecahedronGeometry(1.15, 0), darkRock);
     base.position.y = 0.88;
     base.rotation.set(0.4, Math.random()*3, 0.2);
@@ -1699,7 +2432,7 @@ function buildNodeAt(type, x, z) {
   }
 
   g.position.set(x, 0, z);
-  scene.add(g); nodes.push(g);
+  worldGroup.add(g); nodes.push(g);
 }
 function shakeNode(n) {
   const ox = n.position.x;
@@ -1712,6 +2445,10 @@ function hitEnemy(e) {
   const crit = Math.random() < 0.15;
   if (crit) dmg = Math.floor(dmg * 2);
   e.userData.hp -= dmg;
+  // 독단검: 중독 부여 (초당 데미지)
+  if (P.weapon.poison) {
+    e.userData.poison = { t: P.weapon.poison.dur, tick: 1, dmg: P.weapon.poison.dmg };
+  }
   sfx(crit ? 'crit' : 'hit');
   burst(e.position.clone().setY(1.2), crit ? 0xffd040 : 0xff6040, crit ? 18 : 12);
   floatText(e.position, crit ? `💥 ${dmg} 크리티컬!` : `-${dmg}`, crit ? '#ffd040' : '#ff7a5a');
@@ -1731,11 +2468,24 @@ function killEnemy(e) {
   if (e.userData.boss) {
     boss = null;
     document.getElementById('bossBar').style.display = 'none';
-    inv.scale += 3 + Math.floor(Math.random()*3);
-    floatText(e.position, `🐲 용의 비늘 획득!!`, '#ff5030');
-    toast('🎉 고대 화염룡 토벌! 용의 비늘을 손에 넣었다!', 5000);
+    if (e.userData.dragon) {
+      inv.scale += 3 + Math.floor(Math.random()*3);
+      floatText(e.position, `🐲 용의 비늘 획득!!`, '#ff5030');
+      if (!gateOpen) {
+        toast('🎉 고대 화염룡 토벌! 그 순간, 뒤쪽 성문이 열리기 시작한다...!', 5000);
+        openGate();
+      } else {
+        toast('🎉 고대 화염룡 토벌! 용의 비늘을 손에 넣었다!', 5000);
+      }
+      setTimeout(() => { if (worldId === 1 && !boss) spawnBoss(); }, 90000);
+    } else if (e.userData.worm) {
+      inv.sand += 6 + Math.floor(Math.random()*5);
+      inv.scale += 2;
+      floatText(e.position, `🏜️ 모래정수 대량 획득!!`, '#e8c060');
+      toast('🏆 샌드웜 토벌!! 사막의 지배자를 쓰러뜨렸다! 모래정수 + 용의 비늘 획득!', 6000);
+      setTimeout(() => { if (worldId === 2 && !boss) spawnSandworm(); }, 120000);
+    }
     refreshInv();
-    setTimeout(spawnBoss, 90000); // 90초 뒤 리젠
     return;
   }
   // 드랍
@@ -1744,7 +2494,7 @@ function killEnemy(e) {
   }
 }
 function spawnDrop(pos, mat) {
-  const colors = { wood:0x9a6b3f, stone:0x9a9aa5, iron:0xd8a860, hide:0xa0703a, mana:0x50c8ff, scale:0xff5030 };
+  const colors = { wood:0x9a6b3f, stone:0x9a9aa5, iron:0xd8a860, hide:0xa0703a, mana:0x50c8ff, scale:0xff5030, sand:0xe8c060, venom:0x50c840 };
   const m = new T.Mesh(new T.OctahedronGeometry(0.35), new T.MeshStandardMaterial({color:colors[mat], emissive:colors[mat], emissiveIntensity:.4}));
   m.position.copy(pos).setY(0.6);
   m.position.x += (Math.random()-0.5)*1.6;
@@ -1822,6 +2572,16 @@ function renderRecipes() {
   el.innerHTML = '';
   for (const r of list) {
     if (r.hidden) continue;
+    if (r.world === 2 && !world2Unlocked) {
+      const lockDiv = document.createElement('div');
+      lockDiv.className = 'recipe';
+      lockDiv.style.opacity = '0.55';
+      lockDiv.innerHTML = `<div class="ricon">🔒</div><div class="rbody">
+        <div class="rname">${r.nm}</div>
+        <div class="rmat">🏜️ 월드 2(사막)에 도달하면 해금됩니다</div></div>`;
+      el.appendChild(lockDiv);
+      continue;
+    }
     const ok = canCraft(r.cost);
     const equipped = cur.id === r.id;
     const matStr = Object.entries(r.cost).map(([m,c]) =>
@@ -1833,7 +2593,7 @@ function renderRecipes() {
       <div class="ricon">${r.icon}</div>
       <div class="rbody">
         <div class="rname">${r.nm}${equipped?'<span class="equippedTag">장착중</span>':''}${owned>0?` <span style="font-size:11px;color:#8a8272;">보유 ${owned}</span>`:''}</div>
-        <div class="rstat">${craftTab==='W' ? '공격력 '+r.atk : '방어력 '+r.def}</div>
+        <div class="rstat">${craftTab==='W' ? '공격력 '+r.atk : '방어력 '+r.def}${r.poison ? ` <span style="color:#60c050">☠️ 독 ${r.poison.dmg}/초 (${r.poison.dur}초)</span>` : ''}</div>
         <div class="rmat">${matStr}</div>
       </div>
       <button ${!ok?'disabled':''}>제작</button>`;
@@ -1906,21 +2666,28 @@ function die() {
 function respawn() {
   isDead = false;
   P.hp = P.maxHp;
-  playerGroup.position.set(0,0,0);
+  playerGroup.position.copy(respawnPoint); // 현재 월드의 체크포인트
   // 파슬리도 안전지대로 리스폰 (동료 모드일 때 플레이어 옆으로)
   if (parsley && parsleyMode === 'ally') {
-    parsley.position.set(1.6, 0, 0.8);
+    parsley.position.set(respawnPoint.x + 1.6, 0, respawnPoint.z + 0.8);
     parsley.rotation.y = Math.atan2(-1.6, -0.8);
     parsleyAtkCd = 1; parsleySwing = 0;
     burst(parsley.position.clone().setY(1.0), 0x8ae06a, 14);
     floatText(parsley.position, '🐸 "괜찮아 개굴? 같이 다시 가자 개굴!"', '#8ae06a');
+  }
+  if (nurungji && nurungjiMode === 'ally') {
+    nurungji.position.set(respawnPoint.x - 1.6, 0, respawnPoint.z + 0.8);
+    nurungji.rotation.y = Math.atan2(1.6, -0.8);
+    nurungjiAtkCd = 1; nurungjiSwing = 0;
+    burst(nurungji.position.clone().setY(1.0), 0x60c050, 14);
+    floatText(nurungji.position, '🐢 "괜찮나... 느릿... 다시 가자..."', '#7ad080');
   }
   document.getElementById('deathScreen').style.display = 'none';
   refreshInv(); refreshStats();
 }
 
 /* ---------- 메인 루프 ---------- */
-let spawnTimer = 0, smokeT = 0;
+let spawnTimer = 0, smokeT = 0, camShake = 0;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -1930,6 +2697,7 @@ function animate() {
   updateEnemies(dt, t);
   updateChests(dt);
   updateParsley(dt);
+  updateNurungji(dt);
   updateDrops(dt, t);
   updateParticles(dt);
   updateFloatTexts(dt);
@@ -1967,9 +2735,9 @@ function animate() {
                 && player.z > hutInner.minZ && player.z < hutInner.maxZ;
     hutRoofGroup.visible = !inside;
   }
-  // 굴뚝 연기
+  // 굴뚝 연기 (월드1)
   smokeT -= dt;
-  if (smokeT <= 0 && hutChimneyPos) {
+  if (smokeT <= 0 && hutChimneyPos && worldId === 1) {
     smokeT = 0.55;
     const p = new T.Mesh(new T.SphereGeometry(0.13, 6, 5),
       new T.MeshBasicMaterial({color:0x9a9aa2, transparent:true, opacity:.4}));
@@ -1979,9 +2747,29 @@ function animate() {
     scene.add(p); particles.push(p);
   }
 
-  // 대장간 힌트
-  const nearForge = player.distanceTo(new T.Vector3(0,0,4)) < 8;
+  // 대장간/캠프 힌트
+  const nearForge = Math.hypot(player.x - SAFE_CENTER.x, player.z - SAFE_CENTER.z) < 8;
   document.getElementById('forgeHint').style.display = (nearForge && gameStarted && !craftOpen) ? 'block' : 'none';
+
+  // 성문 개방 애니메이션
+  if (gateOpening && gateDoors.length === 2) {
+    gateDoors[0].rotation.y += (-1.55 - gateDoors[0].rotation.y) * Math.min(1, dt*1.5);
+    gateDoors[1].rotation.y += ( 1.55 - gateDoors[1].rotation.y) * Math.min(1, dt*1.5);
+    if (Math.abs(gateDoors[1].rotation.y - 1.55) < 0.05) {
+      gateOpening = false;
+      if (gatePortal) gatePortal.visible = true;
+    }
+  }
+  if (gatePortal && gatePortal.visible) gatePortal.material.opacity = 0.3 + Math.sin(t*3)*0.12;
+
+  // 월드 이동 포탈 판정
+  if (gameStarted && !isDead && !craftOpen) {
+    if (worldId === 1 && gateOpen && Math.hypot(player.x - GATE_POS.x, player.z - GATE_POS.z) < 3.2) {
+      enterWorld(2);
+    } else if (worldId === 2 && Math.hypot(player.x - W2_RETURN.x, player.z - W2_RETURN.z) < 2.4) {
+      enterWorld(1);
+    }
+  }
 
   // 지도 실시간 갱신
   if (mapOpen) drawMap();
@@ -1993,6 +2781,11 @@ function animate() {
     player.y + ch,
     player.z - Math.cos(camYaw)*camDist*Math.cos(camPitch)
   );
+  if (camShake > 0) {
+    camShake = Math.max(0, camShake - dt*1.1);
+    camera.position.x += (Math.random()-0.5) * camShake * 1.8;
+    camera.position.y += (Math.random()-0.5) * camShake * 1.4;
+  }
   camera.lookAt(player.x, player.y + 1.6, player.z);
 
   renderer.render(scene, camera);
@@ -2048,14 +2841,21 @@ function updateEnemies(dt, t) {
     const dist = d.length();
     const aggro = ud.boss ? 40 : 22;
     ud.moving = false;
-    if (gameStarted && !isDead && dist < aggro && dist > (ud.boss?3.5:1.4) && !(ud.boss && ud.breathState)) {
+    if (gameStarted && !isDead && dist < aggro && dist > (ud.boss?3.5:1.4) && !(ud.boss && ud.breathState) && !(ud.worm && ud.wormState !== 'surface')) {
       d.normalize();
       e.position.add(d.multiplyScalar(def.speed * dt));
       e.rotation.y = Math.atan2(d.x, d.z);
       ud.moving = true;
     }
     // 접촉 데미지
-    if (dist < (ud.boss?4.5:1.9) && !isDead && gameStarted) damagePlayer(def.atk);
+    if (dist < (ud.boss?4.5:1.9) && !isDead && gameStarted && !(ud.worm && ud.wormState !== 'surface')) {
+      damagePlayer(def.atk);
+      // 독 갑옷: 나를 때린 적이 중독됨
+      if (P.armor.poison && !ud.poison) {
+        ud.poison = { t: P.armor.poison.dur, tick: 0.5, dmg: P.armor.poison.dmg };
+        floatText(e.position, '☠️ 중독!', '#60c050');
+      }
+    }
 
     // 안전지대: 결계 밖으로 밀어냄
     const so = e.position.clone().sub(SAFE_CENTER); so.y = 0;
@@ -2064,6 +2864,20 @@ function updateEnemies(dt, t) {
       so.normalize().multiplyScalar(SAFE_R + margin);
       e.position.x = SAFE_CENTER.x + so.x;
       e.position.z = SAFE_CENTER.z + so.z;
+    }
+
+    // ---- 독 데미지 틱 ----
+    if (ud.poison) {
+      ud.poison.t -= dt;
+      ud.poison.tick -= dt;
+      if (ud.poison.tick <= 0) {
+        ud.poison.tick = 1;
+        ud.hp -= ud.poison.dmg;
+        burst(e.position.clone().setY(1.2), 0x50c840, 5);
+        floatText(e.position, `-${ud.poison.dmg} ☠️`, '#60c050');
+        if (ud.hp <= 0) { killEnemy(e); continue; }
+      }
+      if (ud.poison.t <= 0) ud.poison = null;
     }
 
     // ---- 관절 애니메이션 ----
@@ -2090,29 +2904,50 @@ function updateEnemies(dt, t) {
       const tgt = ud.moving ? Math.sin(wp + (i%2)*Math.PI + Math.PI) * 0.55 : Math.sin(ud.bob*1.5 + i)*0.06;
       ud.arms[i].rotation.x += (tgt - ud.arms[i].rotation.x) * ease;
     }
-    if (def.id === 'slime') {
+    const mid = def.model || def.id;
+    if (mid === 'slime') {
       // 통통 튀는 젤리 (이동 시 점프, 대기 시 숨쉬기)
       const hop = ud.moving ? Math.abs(Math.sin(ud.bob*7)) : 0;
       ud.body.position.y = 0.6*def.size + hop*0.45;
       ud.body.scale.y = 0.75 + (ud.moving ? -hop*0.12 + 0.06 : Math.sin(ud.bob*3)*0.05);
       ud.body.scale.x = ud.body.scale.z = 1 + (ud.moving ? hop*0.07 : Math.sin(ud.bob*3)*-0.04);
     }
-    if (def.id === 'wolf') {
+    if (mid === 'wolf') {
       ud.tail.rotation.y = Math.sin(ud.bob*7) * (ud.moving?0.55:0.3);
       ud.head.rotation.x = ud.moving ? 0.08 : Math.sin(ud.bob*1.2)*0.08;
       ud.body.position.y = 0.78*def.size + (ud.moving ? Math.abs(Math.sin(wp))*0.08 : 0);
     }
-    if (def.id === 'golem') {
+    if (mid === 'golem') {
       ud.body.position.y = 1.3*def.size + (ud.moving ? Math.abs(Math.sin(wp))*0.1 : Math.sin(ud.bob*1.2)*0.03);
       ud.body.rotation.z = ud.moving ? Math.sin(wp)*0.05 : 0; // 육중한 좌우 흔들림
     }
-    if (def.id === 'wisp') {
+    if (mid === 'scorp') {
+      ud.tail.rotation.z = Math.sin(ud.bob*3)*0.18;           // 독침 꼬리 좌우 흔들기
+      ud.tail.rotation.x = Math.sin(ud.bob*1.6)*0.08;
+      ud.body.position.y = 0.45*def.size + (ud.moving ? Math.abs(Math.sin(wp*1.6))*0.05 : 0);
+    }
+    if (mid === 'mummy') {
+      // 뻗은 팔이 으스스하게 흔들림 + 몸이 좌우로 기우뚱 (좀비 워크)
+      for (let i=0;i<ud.mummyArms.length;i++)
+        ud.mummyArms[i].rotation.x = Math.sin(ud.bob*1.8 + i*1.4)*0.1 - 0.08;
+      ud.body.rotation.z = ud.moving ? Math.sin(wp*0.5)*0.07 : Math.sin(ud.bob*0.9)*0.03;
+    }
+    if (mid === 'dune') {
+      // 회오리 링이 서로 다른 속도로 회전 + 위아래 출렁
+      for (let i=0;i<ud.rings.length;i++) {
+        ud.rings[i].rotation.z += dt * (4.5 - i*1.1);
+        ud.rings[i].position.x = Math.sin(ud.bob*3 + i*1.2)*0.1;
+      }
+      ud.body.position.y = 1.75 + Math.sin(ud.bob*3.2)*0.18;
+      ud.body.rotation.y += dt*2;
+    }
+    if (mid === 'wisp') {
       ud.body.position.y = 1.4 + Math.sin(ud.bob*3)*0.3;
       ud.shards.position.y = ud.body.position.y;
       ud.shards.rotation.y += dt*2.5;
       ud.body.rotation.y += dt*0.6;
     }
-    if (ud.boss) {
+    if (ud.boss && ud.dragon) {
       // ---- 브레스 스킬 ----
       ud.breathCd -= dt;
       if (ud.breathState === 0 && ud.breathCd <= 0 && dist < 26 && gameStarted && !isDead) {
@@ -2156,7 +2991,83 @@ function updateEnemies(dt, t) {
       ud.jaw.rotation.x = ud.jawOverride ?? (0.08 + Math.max(0, Math.sin(t*2))*0.3);       // 턱 벌리기
       for (let i=0;i<ud.tailSegs.length;i++)                           // 꼬리 물결
         ud.tailSegs[i].rotation.y = Math.sin(t*1.8 - i*0.7)*0.22;
-      // 보스 HP바
+    }
+    if (ud.worm) {
+      // ---- 샌드웜: 잠복 → 추적 → 기습 (연출 강화판) ----
+      ud.wormT -= dt;
+      // 공통: 이빨 링 역회전 + 목구멍 맥동 + 용암 띠 펄스
+      ud.teethRings[0].rotation.z += dt * 2.2;
+      ud.teethRings[1].rotation.z -= dt * 3.4;
+      const pulse = 0.7 + Math.sin(t*5) * 0.3;
+      ud.throat.scale.setScalar(0.9 + Math.sin(t*6)*0.12);
+      ud.throatLight.intensity = 1.6 + pulse;
+      for (let i=0;i<ud.glowBands.length;i++)
+        ud.glowBands[i].material.emissiveIntensity = 1.0 + Math.sin(t*4 - i*0.8)*0.6;
+
+      if (ud.wormState === 'surface') {
+        ud.mound.visible = false;
+        // 몸통 물결 + 좌우 굽이침
+        for (let i=0;i<ud.segs.length;i++) {
+          ud.segs[i].position.y = (1.05 - i*0.1)*def.size + Math.sin(t*4 - i*0.9)*0.24*def.size;
+          ud.segs[i].position.x = Math.sin(t*2.2 - i*0.7)*0.18*def.size;
+        }
+        // 턱: 숨쉬듯 벌렁거림
+        for (const jaw of ud.jaws)
+          jaw.rotation.x += ((-1.0 + Math.sin(t*3)*0.25) - jaw.rotation.x) * Math.min(1, dt*6);
+        // 기어갈 때 모래 먼지
+        if (ud.moving && Math.random() < 0.4)
+          burst(new T.Vector3(e.position.x + (Math.random()-0.5)*3, 0.3, e.position.z + (Math.random()-0.5)*3), 0xb0925c, 2);
+        if (ud.wormT <= 0 && dist < 32 && gameStarted && !isDead) {
+          ud.wormState = 'sink'; ud.wormT = 0.9;
+          toast('🪱 샌드웜이 땅속으로 파고든다...!', 1800);
+          shockwave(e.position, 0xb0925c);
+          sfx('roar');
+        }
+      } else if (ud.wormState === 'sink') {
+        e.position.y = -9 * (1 - ud.wormT/0.9);
+        e.rotation.z = Math.sin(t*14) * 0.06; // 드릴처럼 진동
+        for (const jaw of ud.jaws) jaw.rotation.x += (-0.2 - jaw.rotation.x) * Math.min(1, dt*8); // 활짝 벌리고 파고듬
+        burst(new T.Vector3(e.position.x + (Math.random()-0.5)*2.5, 0.4, e.position.z + (Math.random()-0.5)*2.5), 0xc8a060, 3);
+        if (ud.wormT <= 0) { ud.wormState = 'under'; ud.wormT = 2.4; e.rotation.z = 0; }
+      } else if (ud.wormState === 'under') {
+        e.position.y = -9;
+        // 지표를 달리는 모래 융기 언덕!
+        ud.mound.visible = true;
+        ud.mound.position.y = -e.position.y + 0.05;
+        ud.mound.scale.y = 0.32 + Math.sin(t*9)*0.06;
+        const dd = player.clone().sub(e.position); dd.y = 0;
+        if (dd.length() > 0.5) {
+          dd.normalize();
+          e.position.x += dd.x * def.speed * 2.4 * dt;
+          e.position.z += dd.z * def.speed * 2.4 * dt;
+          e.rotation.y = Math.atan2(dd.x, dd.z);
+        }
+        if (Math.random() < 0.7) burst(new T.Vector3(e.position.x + (Math.random()-0.5)*2, 0.3, e.position.z + (Math.random()-0.5)*2), 0xa8874c, 2);
+        if (ud.wormT <= 0) {
+          ud.wormState = 'emerge'; ud.wormT = 0.6; ud.struck = false;
+          shockwave(e.position, 0xff7020); // 기습 예고 붉은 링!
+        }
+      } else if (ud.wormState === 'emerge') {
+        // 기습!! 땅에서 폭발적으로 솟아오름 (턱 활짝 + 충격파 + 카메라 흔들림)
+        ud.mound.visible = false;
+        e.position.y = -9 + (1 - ud.wormT/0.6) * 9;
+        for (const jaw of ud.jaws) jaw.rotation.x += (0.35 - jaw.rotation.x) * Math.min(1, dt*10); // 최대 개방
+        if (!ud.struck && ud.wormT < 0.35) {
+          ud.struck = true;
+          burst(new T.Vector3(e.position.x, 1.2, e.position.z), 0xc8a060, 45);
+          burst(new T.Vector3(e.position.x, 0.8, e.position.z), 0x6a4e2c, 20); // 바위 파편
+          shockwave(e.position, 0xffb040);
+          shockwave(e.position, 0xc8a060);
+          sfx('roar');
+          const hitD = Math.hypot(player.x - e.position.x, player.z - e.position.z);
+          if (hitD < 4.5 && !isDead) damagePlayer(Math.round(def.atk * 1.4));
+          if (hitD < 22) camShake = 0.7; // 화면 흔들림
+        }
+        if (ud.wormT <= 0) { e.position.y = 0; ud.wormState = 'surface'; ud.wormT = 6 + Math.random()*3; }
+      }
+    }
+    if (ud.boss) {
+      // 보스 HP바 (공통)
       const near = dist < 55;
       document.getElementById('bossBar').style.display = near ? 'block' : 'none';
       if (near) document.getElementById('bossFill').style.width = (ud.hp/ud.maxHp*100)+'%';
@@ -2199,6 +3110,11 @@ function updateParticles(dt) {
     const p = particles[i];
     p.userData.life -= dt;
     if (p.userData.life <= 0) { scene.remove(p); particles.splice(i,1); continue; }
+    if (p.userData.ring) { // 충격파: 퍼지며 사라짐
+      p.scale.x = p.scale.y = p.scale.x * (1 + dt*5.5);
+      p.material.opacity = p.userData.life;
+      continue;
+    }
     p.userData.v.y -= (p.userData.g ?? 14)*dt;
     p.position.addScaledVector(p.userData.v, dt);
     if (p.userData.grow) { // 커지면서 흐려짐 (성장률 개별 설정, 상한 있음)
