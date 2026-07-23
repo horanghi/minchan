@@ -55,6 +55,7 @@
   }
   .card:nth-child(2) { animation-delay:.12s; }
   .card:nth-child(3) { animation-delay:.24s; }
+  .card:nth-child(4) { animation-delay:.36s; }
   @keyframes cardIn { from{opacity:0; transform:translateY(24px);} to{opacity:1; transform:none;} }
   .card:hover, .card:active {
     transform:translateY(-6px) scale(1.02);
@@ -116,6 +117,14 @@ const GAMES = [
     desc: '재료를 모아 대장간에서 나만의 검을 제작! 몬스터를 사냥하며 성장하는 3D RPG.',
     tags: ['3D', 'RPG', '제작'],
     accent: '#f0a848', accentDark: '#a86a1e', glow: 'rgba(240,168,72,.35)',
+  },
+  {
+    href: 'minchan_4/index.html',
+    icon: '🃏',
+    title: '테이블 카드 대전',
+    desc: '한 기기로 2~3명이 둘러앉아! 무기·마법·회복 카드를 골라 마지막 생존자가 되자.',
+    tags: ['카드', '2~3인', '같이 하기'],
+    accent: '#e0566a', accentDark: '#a12f42', glow: 'rgba(224,86,106,.35)',
   },
 ];
 
