@@ -37,6 +37,10 @@
     border:2px solid var(--pencil);border-radius:14px;padding:0 9px;background:#fff;
     font-weight:700;white-space:nowrap;font-size:15px;
   }
+  /* 플레이어별 색 정체성 (로그 p0/p1/p2 와 같은 계열) — 순서 바 칩 */
+  .orderbar .chip.sc0{border-color:#2f7c44;color:#1a6b2e;background:#eef7ea;}
+  .orderbar .chip.sc1{border-color:#3763b0;color:#1f4fa3;background:#edf3fc;}
+  .orderbar .chip.sc2{border-color:#b04a37;color:#a3341f;background:#fdf0ec;}
   .orderbar .chip.now{background:#ffe9c7;outline:2px dashed #d98a3c;outline-offset:1px;}
   .orderbar .arw{font-size:17px;color:#7a5a2e;font-weight:700;}
   .orderbar .dirlabel{font-size:14px;color:var(--pencil);margin-left:4px;white-space:nowrap;}
@@ -58,6 +62,9 @@
   .arena{
     position:relative;width:100%;aspect-ratio:1;max-width:520px;
     --r: min(34vw, 178px);
+    /* 좁은 화면에서 맨 아래(내) 좌석 이름표가 아레나 밖으로 삐져나와 아래 라벨을 가리는 것 보정.
+       넘침량 ≈ (--r + 좌석높이/2) - 아레나높이/2. 스크롤바 폭까지 감안해 여유를 둠(넓은 화면에선 0). */
+    margin-bottom: max(0px, calc(88px - 16vw));
   }
   .tabletop{
     position:absolute;inset:7%;border-radius:50%;
@@ -94,6 +101,15 @@
   }
   .seat .info .nm{font-size:16px;font-weight:700;line-height:1.1;white-space:nowrap;}
   .seat .info .nm .me{color:#7a2a2a;font-size:12px;}
+  /* 플레이어별 색 정체성 — 좌석 이름표 (색 테두리 + 옅은 색 종이 틴트 + 이름 색) */
+  .seat.sc0 .info{border-color:#2f7c44;background:rgba(235,247,233,.94);box-shadow:2px 3px 0 rgba(26,107,46,.22);}
+  .seat.sc0 .info .nm{color:#1a6b2e;}
+  .seat.sc1 .info{border-color:#3763b0;background:rgba(233,240,251,.94);box-shadow:2px 3px 0 rgba(31,79,163,.22);}
+  .seat.sc1 .info .nm{color:#1f4fa3;}
+  .seat.sc2 .info{border-color:#b04a37;background:rgba(251,236,232,.94);box-shadow:2px 3px 0 rgba(163,52,31,.22);}
+  .seat.sc2 .info .nm{color:#a3341f;}
+  /* 내 자리 강조: 크레파스로 한 번 더 두른 느낌 (turnGlow/targetable 은 outline 이라 안 겹침) */
+  .seat.mine .info{border-width:3.5px;box-shadow:0 0 0 3px rgba(255,233,199,.95),2px 3px 0 rgba(0,0,0,.18);}
   .seat .info .hp{font-size:13.5px;line-height:1.2;}
   .seat .info .bd{font-size:11px;line-height:1.2;min-height:13px;}
   .seat.turnGlow .info{outline:3px dashed #d98a3c;outline-offset:2px;}
@@ -110,19 +126,25 @@
     border:2px solid var(--pencil);border-radius:14px;padding:0 10px;
     box-shadow:1.5px 2px 0 rgba(0,0,0,.15);white-space:nowrap;
   }
-  .pile{position:relative;width:104px;height:120px;}
+  .pile{position:relative;width:126px;height:146px;}
   .pile .pc{
-    position:absolute;left:50%;top:50%;width:78px;height:106px;
-    background:var(--paper);border:2.5px solid var(--pencil);border-radius:7px;
-    box-shadow:2px 3px 0 rgba(0,0,0,.22);
+    position:absolute;left:50%;top:50%;width:94px;height:128px;
+    background:var(--paper);border:2.5px solid var(--pencil);border-radius:9px;
+    box-shadow:2px 3px 0 rgba(0,0,0,.22), inset 0 0 0 2px rgba(255,255,255,.55);
     display:flex;flex-direction:column;overflow:hidden;
     transform:translate(-50%,-50%) rotate(var(--tilt,0deg));
   }
   .pile .pc.pop{animation:slam .3s ease-out;}
   @keyframes slam{0%{transform:translate(-50%,-160%) rotate(0) scale(1.3);opacity:.4;}100%{transform:translate(-50%,-50%) rotate(var(--tilt)) scale(1);opacity:1;}}
-  .pile .pc .t{font-size:12px;font-weight:700;text-align:center;border-bottom:2px solid var(--pencil);padding:1px;white-space:nowrap;}
-  .pile .pc .a{flex:1;display:flex;align-items:center;justify-content:center;font-size:34px;}
-  .pile .pc .d{font-size:9.5px;text-align:center;border-top:2px solid var(--pencil);padding:1px;line-height:1.05;}
+  .pile .pc .t{font-size:14.5px;font-weight:700;text-align:center;border-bottom:2px solid var(--pencil);padding:1px;white-space:nowrap;overflow:hidden;}
+  .pile .pc .a{flex:1;display:flex;align-items:center;justify-content:center;font-size:48px;}
+  .pile .pc .d{font-size:12px;text-align:center;border-top:2px solid var(--pencil);padding:1px;line-height:1.1;}
+  /* 좁은 폰 화면에서는 중앙 카드를 한 단계 줄여 좌석·덱 표시와의 겹침을 완화 (그래도 기존보다 큼) */
+  @media (max-width:430px){
+    .pile{width:112px;height:132px;}
+    .pile .pc{width:86px;height:118px;}
+    .pile .pc .a{font-size:42px;}
+  }
   .pile .who{
     position:absolute;left:50%;bottom:-13px;transform:translateX(-50%);
     font-size:12.5px;background:#ffe9c7;border:2px solid #d98a3c;border-radius:12px;padding:0 8px;white-space:nowrap;
@@ -149,23 +171,58 @@
 
   /* ===== 하단 손패 ===== */
   .handlabel{width:100%;color:#fdfdf8;font-size:18px;text-shadow:1px 1px 0 rgba(0,0,0,.3);margin:0 4px;display:flex;justify-content:space-between;align-items:center;}
-  .myhand{width:100%;display:flex;gap:9px;justify-content:center;min-height:118px;}
+  /* --fs: 손패 장수별 글자 배율(JS 지정). 카드 높이는 .art 의 min-height 로 결정(플렉스 stretch 와 충돌 없음) */
+  .myhand{width:100%;display:flex;gap:7px;justify-content:center;min-height:118px;--fs:1;flex-shrink:0;} /* 화면이 낮아도 카드가 눌려 잘리지 않게 */
   .myhand .card{
-    flex:1 1 0;max-width:118px;background:var(--paper);
-    border:2.5px solid var(--pencil);border-radius:8px;
-    box-shadow:2px 4px 0 rgba(0,0,0,.18);cursor:pointer;
-    display:flex;flex-direction:column;aspect-ratio:3/4.3;
+    flex:1 1 0;max-width:132px;background:var(--paper);
+    border:2.5px solid var(--pencil);border-radius:10px;
+    box-shadow:2px 4px 0 rgba(0,0,0,.18), inset 0 0 0 2px rgba(255,255,255,.55);cursor:pointer;
+    display:flex;flex-direction:column;
     transition:transform .12s, box-shadow .12s;
+    position:relative;overflow:hidden;
   }
-  .myhand .card:hover,.myhand .card:focus-visible{transform:translateY(-7px) rotate(-1deg);box-shadow:4px 8px 0 rgba(0,0,0,.22);outline:none;}
+  .myhand .card:hover,.myhand .card:focus-visible{transform:translateY(-7px) rotate(-1deg);box-shadow:4px 8px 0 rgba(0,0,0,.22), inset 0 0 0 2px rgba(255,255,255,.55);outline:none;}
   .myhand .card:active{transform:translateY(-3px);}
   .myhand .card.sel{transform:translateY(-9px);outline:3px solid #c0392b;}
   .myhand .card.disabled{opacity:.5;filter:grayscale(.45);cursor:default;pointer-events:none;box-shadow:1px 2px 0 rgba(0,0,0,.15);}
-  .myhand .card .title{font-size:15.5px;font-weight:700;text-align:center;padding:2px;border-bottom:2px solid var(--pencil);line-height:1;white-space:nowrap;overflow:hidden;}
-  .myhand .card .art{flex:1;display:flex;align-items:center;justify-content:center;font-size:36px;}
-  .myhand .card .desc{font-size:12.5px;text-align:center;padding:2px;border-top:2px solid var(--pencil);line-height:1.05;min-height:34px;display:flex;align-items:center;justify-content:center;}
+  /* 손패 5장(카드 폭 축소)에도 넘치지 않도록 장수에 따라 글자 배율(--fs)을 조절 */
+  .myhand .card .title{font-size:calc(19px*var(--fs));font-weight:700;text-align:center;padding:2px;border-bottom:2px solid var(--pencil);line-height:1.05;white-space:nowrap;overflow:hidden;flex-shrink:0;}
+  .myhand .card .art{flex:1;display:flex;align-items:center;justify-content:center;font-size:calc(54px*var(--fs));min-height:calc(116px*var(--fs));}
+  .myhand .card .desc{font-size:calc(15px*var(--fs));text-align:center;padding:2px;border-top:2px solid var(--pencil);line-height:1.08;min-height:30px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .myhand .card.atk .art{color:#7a2a2a;} .myhand .card.heal .art{color:#2a6a3a;} .myhand .card.buff .art{color:#b58900;}
   .myhand .wait{color:#fdfdf8;font-size:17px;text-shadow:1px 1px 0 rgba(0,0,0,.3);align-self:center;}
+
+  /* ===== 카드 꾸미기: 종류별 테마 + 이모지 광채 + 반짝임 + 홀로그램 광택 ===== */
+  /* 종류별 배경 그라데이션·테두리 (손패 + 중앙 공개 카드 공통) */
+  .myhand .card.atk,.pile .pc.atk{border-color:#8a4a3a;background:linear-gradient(165deg,#fff6ee 0%,#ffe3cd 55%,#ffcfae 100%);}
+  .myhand .card.heal,.pile .pc.heal{border-color:#3f7a4a;background:linear-gradient(165deg,#f3fbf0 0%,#dcf2d3 55%,#c2e8ba 100%);}
+  .myhand .card.buff,.pile .pc.buff{border-color:#a8842e;background:linear-gradient(165deg,#fffbe8 0%,#ffefbb 55%,#ffe294 100%);}
+  /* 제목 띠·설명 띠 틴트 */
+  .myhand .card.atk .title,.pile .pc.atk .t{background:rgba(255,182,150,.45);color:#7a2a2a;}
+  .myhand .card.heal .title,.pile .pc.heal .t{background:rgba(176,226,166,.45);color:#245c32;}
+  .myhand .card.buff .title,.pile .pc.buff .t{background:rgba(255,222,132,.5);color:#7a5a10;}
+  .myhand .card .desc,.pile .pc .d{background:rgba(255,255,255,.55);}
+  /* 이모지 뒤 방사형 광채 + 입체 그림자 */
+  .myhand .card .art,.pile .pc .a{position:relative;}
+  .myhand .card.atk .art,.pile .pc.atk .a{color:#7a2a2a;background:radial-gradient(circle at 50% 46%,rgba(255,138,64,.42) 0%,rgba(255,138,64,0) 62%);filter:drop-shadow(0 2px 2px rgba(0,0,0,.22)) drop-shadow(0 0 7px rgba(255,120,40,.55));}
+  .myhand .card.heal .art,.pile .pc.heal .a{color:#2a6a3a;background:radial-gradient(circle at 50% 46%,rgba(110,205,120,.42) 0%,rgba(110,205,120,0) 62%);filter:drop-shadow(0 2px 2px rgba(0,0,0,.22)) drop-shadow(0 0 7px rgba(70,180,90,.55));}
+  .myhand .card.buff .art,.pile .pc.buff .a{color:#b58900;background:radial-gradient(circle at 50% 46%,rgba(255,205,70,.5) 0%,rgba(255,205,70,0) 62%);filter:drop-shadow(0 2px 2px rgba(0,0,0,.22)) drop-shadow(0 0 7px rgba(255,190,40,.6));}
+  /* 모서리 반짝이 별 (색은 종류별 아트 색을 따라감) */
+  .myhand .card .art::before,.pile .pc .a::before{content:'✦';position:absolute;top:4%;left:8%;font-size:15px;animation:twinkle 1.8s ease-in-out infinite;}
+  .myhand .card .art::after,.pile .pc .a::after{content:'✧';position:absolute;bottom:6%;right:9%;font-size:13px;animation:twinkle 1.8s ease-in-out .9s infinite;}
+  @keyframes twinkle{0%,100%{opacity:.2;transform:scale(.75) rotate(-8deg);}50%{opacity:.95;transform:scale(1.15) rotate(8deg);}}
+  /* 홀로그램 광택 (은은한 빛줄기 스윕) */
+  .myhand .card::before,.pile .pc::before{
+    content:'';position:absolute;top:-30%;bottom:-30%;left:0;width:42%;z-index:1;pointer-events:none;
+    background:linear-gradient(105deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.45) 50%,rgba(255,255,255,0) 100%);
+    transform:skewX(-16deg) translateX(-180%);animation:sheen 4.6s ease-in-out infinite;
+  }
+  .myhand .card.disabled::before{display:none;} /* 비활성 카드는 광택 없음 */
+  @keyframes sheen{0%,58%{transform:skewX(-16deg) translateX(-180%);}88%,100%{transform:skewX(-16deg) translateX(430%);}}
+  @media (prefers-reduced-motion:reduce){
+    .myhand .card::before,.pile .pc::before{display:none;}
+    .myhand .card .art::before,.pile .pc .a::before,.myhand .card .art::after,.pile .pc .a::after{animation:none;opacity:.6;}
+  }
 
   /* ===== 오버레이 / 로비 ===== */
   .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(40,36,28,.78);z-index:20;padding:18px;}
@@ -312,7 +369,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 혼동 문자(0/O/1/
 const genCode = () => Array.from({length:4}, () => CODE_ALPHABET[Math.random()*CODE_ALPHABET.length|0]).join('');
 const $ = id => document.getElementById(id);
 
-let socket=null, roomCode=null, mySeat=null, joined=false, S=null, pending=null, lastSeq=0, builtSeatCount=0;
+let socket=null, roomCode=null, mySeat=null, joined=false, S=null, pending=null, lastSeq=0, builtSeatCount=0, builtMySeat=null;
 
 // ===== 토스트 =====
 let toastTimer=null;
@@ -351,7 +408,7 @@ function connectRoom(code){
   const url=new URL(location.href); url.searchParams.set('room',code);
   history.replaceState(null,'',url);
   if(socket){ try{socket.close();}catch(e){} }
-  joined=false; mySeat=null; S=null; lastSeq=0; pending=null; builtSeatCount=0;
+  joined=false; mySeat=null; S=null; lastSeq=0; pending=null; builtSeatCount=0; builtMySeat=null;
   $('connState').textContent='접속 중…';
   // PartyKit room 이름은 대소문자 구분 없이 소문자로 통일
   socket=new PartySocket({ host:PARTY_HOST, room:code.toLowerCase() });
@@ -410,24 +467,28 @@ function showWait(){
 }
 
 // ===== 좌석 =====
-function ensureSeats(n){ if(builtSeatCount!==n) buildSeats(n); }
+// 인원수(n)뿐 아니라 내 좌석(mySeat)이 바뀌어도 다시 배치한다
+function ensureSeats(n){ if(builtSeatCount!==n || builtMySeat!==mySeat) buildSeats(n); }
 function buildSeats(n){
   const t=$('table'); t.innerHTML='';
+  const base = (mySeat!=null) ? mySeat : 0; // 내 좌석을 아직 모르면 seat0 기준
   for(let i=0;i<n;i++){
     const s=document.createElement('div');
-    s.className='seat'; s.id='seat'+i;
-    const ang = i*(360/n);
+    s.className='seat sc'+(i%3); s.id='seat'+i; // id 는 실제 seat 번호 유지 (renderArena/seatClick 이 참조)
+    // 보는 사람 기준 회전: 내 자리(base)가 항상 아래(0도)에 오도록
+    const ang = ((i - base + n) % n) * (360/n);
     s.style.setProperty('--a', ang+'deg');
     s.innerHTML=`<div class="fan"></div><div class="info"><div class="nm"></div><div class="hp"></div><div class="bd"></div></div>`;
     const info=s.querySelector('.info');
-    info.style.transform=`rotate(${-ang}deg)`;
+    info.style.transform=`rotate(${-ang}deg)`; // 이름표는 항상 수평 유지
     info.onclick=()=>seatClick(i);
     t.appendChild(s);
   }
-  builtSeatCount=n;
+  builtSeatCount=n; builtMySeat=mySeat;
 }
 
 // ===== 표시 헬퍼 =====
+// (좌석 색 아이콘 🟢🔵🔴 은 서버가 이미 p.name 앞에 붙여서 보내준다)
 function hearts(f){ let s=''; for(let i=0;i<f.max;i++) s+= i<f.hp?'❤️':'🖤'; return s+` (${f.hp}/${f.max})`; }
 function badgeTxt(f){
   if(f.dead) return '💀 탈락';
@@ -458,6 +519,7 @@ function renderArena(){
     const s=$('seat'+i); if(!s) return;
     const isTurn=v.cur===i && !over && !p.dead;
     s.classList.toggle('dead',p.dead);
+    s.classList.toggle('mine', p.seat===mySeat); // 내 자리 강조
     s.classList.toggle('turnGlow',isTurn);
     s.classList.toggle('targetable', !!pending && i!==mySeat && !p.dead && isMyTurn());
     const fan=s.querySelector('.fan'); fan.innerHTML='';
@@ -498,6 +560,8 @@ function renderMyHand(){
     box.innerHTML=`<div class="wait">${over?'🏁':(me&&me.dead?'💀 탈락했어요':'카드 없음')}</div>`;
     return;
   }
+  // 손패 장수에 따라 카드 글자 배율 조절 (5장까지 폰 화면에서 안 넘치게)
+  box.style.setProperty('--fs', hand.length>=5 ? '0.7' : (hand.length===4 ? '0.85' : '1'));
   const enabled = myTurn && !(me&&me.dead);
   hand.forEach((key,idx)=>{
     const c=CARDS[key]; const div=document.createElement('div');
@@ -520,7 +584,7 @@ function renderPile(){
   let maxSeq=lastSeq;
   show.forEach((e,i)=>{
     const c=CARDS[e.key]; const d=document.createElement('div');
-    d.className='pc'+((i===show.length-1 && e.seq>lastSeq)?' pop':'');
+    d.className='pc '+c.cls+((i===show.length-1 && e.seq>lastSeq)?' pop':''); // 종류별 테마 적용
     d.style.setProperty('--tilt',e.tilt+'deg'); d.style.zIndex=i;
     d.innerHTML=`<div class="t">${c.name}</div><div class="a">${c.art}</div><div class="d">${c.desc}</div>`;
     box.appendChild(d);
@@ -540,7 +604,7 @@ function renderOrderBar(){
   order.forEach((pid,k)=>{
     const p=v.players[pid];
     if(k>0) html+=`<span class="arw">➜</span>`;
-    html+=`<span class="chip${k===0?' now':''}">${k<label.length?label[k]+' ':''}${p.name}</span>`;
+    html+=`<span class="chip sc${pid%3}${k===0?' now':''}">${k<label.length?label[k]+' ':''}${p.name}</span>`;
   });
   html+=`<span class="arw">↩</span><span class="dirlabel">${v.dir===1?'↻ 시계방향':'↺ 반시계방향'}으로 반복</span>`;
   bar.innerHTML=html;
