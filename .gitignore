@@ -10,4 +10,5 @@ launcher.jpeg
 
 # PartyKit 서버 의존성
 party/node_modules/
+party/.wrangler/
 party/.partykit/

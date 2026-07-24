@@ -1,9 +1,12 @@
-// ===== 테이블 카드 대전 — 온라인판 PartyKit 서버 =====
-// 방 하나 = 이 서버 인스턴스 하나. 게임 상태를 서버가 소유(authoritative)하고,
+// ===== 테이블 카드 대전 — 온라인 서버 (Cloudflare Workers + partyserver) =====
+// 방 하나 = Durable Object 인스턴스 하나. 게임 상태를 서버가 소유(authoritative)하고,
 // 각 플레이어에게는 자기 손패만 실물로, 남의 손패는 장수만 전달(redact)한다.
 //
 // 원본(minchan_4/index.html)의 게임 로직을 그대로 이식하되,
 // 렌더/타이머(setTimeout)/pass 오버레이/CPU 로직은 제거했다.
+//
+// PartyKit 관리형 호스팅이 중단되어, Cloudflare 무료 계정에 직접 배포하도록 partyserver로 이식.
+import { Server, routePartykitRequest } from "partyserver";
 
 // ===== 카드 정의 (원본과 동일) =====
 export const CARDS = {
@@ -55,7 +58,7 @@ function freshLobby() {
     winnerSeat: null,
     seq: 0,              // pile 카드 등장 애니메이션용 단조 증가 번호
     logs: [],            // {who, txt}  who: seat 번호 또는 'sys'
-    players: [],         // 아래 makePlayer 참고
+    players: [],
   };
 }
 
@@ -63,29 +66,33 @@ function displayName(nick, seat) {
   return ICONS[seat] + ' ' + nick;
 }
 
-export default class Server {
-  constructor(room) {
-    this.room = room;
-    this.game = null;
-  }
+// ===== Durable Object = 방 하나 =====
+export class MinchanCard extends Server {
+  // hibernate는 기본 OFF — 활성 중 메모리 유지(this.game·연결 안정). 유휴 시 evict되면 클라가 재접속.
+  game = null;
 
-  // 방이 (재)기동될 때 저장된 상태 복원 — 재접속의 기반
+  // DO (재)기동 시 저장된 상태 복원 — 재접속의 기반
   async onStart() {
-    const saved = await this.room.storage.get('game');
+    const saved = await this.ctx.storage.get('game');
     if (saved) {
       this.game = saved;
-      // 복원 시 연결은 모두 끊긴 상태
-      this.game.players.forEach(p => { p.connected = false; p.connId = null; });
+      // 실제 살아있는 연결과 대조: 복원 시점에 붙어 있는 연결만 connected 유지
+      const liveIds = new Set([...this.getConnections()].map(c => c.id));
+      this.game.players.forEach(p => {
+        p.connected = p.connId != null && liveIds.has(p.connId);
+        if (!p.connected) p.connId = null;
+      });
     }
   }
 
   onConnect(conn) {
     conn.send(JSON.stringify({ type: 'hello', phase: this.game?.phase ?? 'lobby' }));
-    // 아직 로비 상태라면 현재 참가자 목록을 볼 수 있게 상태도 보낸다
+    // 로비 참가자 목록을 볼 수 있게 현재 상태도 보낸다(아직 join 전이라 손패는 없음)
     if (this.game) conn.send(JSON.stringify(this.viewFor(null)));
   }
 
-  onMessage(raw, sender) {
+  // partyserver: onMessage(connection, message) — 인자 순서 주의
+  onMessage(sender, raw) {
     let msg;
     try { msg = JSON.parse(raw); } catch { return this.err(sender, '잘못된 메시지'); }
     switch (msg && msg.type) {
@@ -102,6 +109,10 @@ export default class Server {
   onError(conn) { this.markDisconnected(conn.id); }
 
   // ===== 연결/좌석 헬퍼 =====
+  getConn(id) {
+    for (const c of this.getConnections()) { if (c.id === id) return c; }
+    return null;
+  }
   seatOf(connId) {
     if (!this.game) return null;
     const p = this.game.players.find(pp => pp.connId === connId);
@@ -124,7 +135,7 @@ export default class Server {
       if (p) {
         // 같은 토큰의 기존 연결이 살아있으면 정리(단일화)
         if (p.connId && p.connId !== sender.id) {
-          const old = this.room.getConnection?.(p.connId);
+          const old = this.getConn(p.connId);
           if (old) { try { old.close(); } catch {} }
         }
         p.connId = sender.id;
@@ -412,11 +423,18 @@ export default class Server {
   }
 
   broadcastState() {
-    for (const conn of this.room.getConnections()) {
+    for (const conn of this.getConnections()) {
       const seat = this.seatOf(conn.id);
       conn.send(JSON.stringify(this.viewFor(seat)));
     }
-    // 상태 백업 (재접속/room eviction 대비) — 단일 지점
-    this.room.storage.put('game', this.game);
+    // 상태 백업 (재접속/DO eviction 대비) — 단일 지점
+    this.ctx.storage.put('game', this.game);
   }
 }
+
+// ===== Worker 엔트리: /parties/main/<방코드> 를 위 Durable Object로 라우팅 =====
+export default {
+  async fetch(request, env) {
+    return (await routePartykitRequest(request, env)) || new Response('Not Found', { status: 404 });
+  },
+};

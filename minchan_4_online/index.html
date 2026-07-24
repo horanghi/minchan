@@ -298,13 +298,15 @@ const CARDS = {
   dev:{name:'개발자의 권능',art:'🌞',cls:'buff',steal:true,desc:'카드 뺏기·턴유지'},
 };
 
-// 배포 후 PartyKit 프로젝트 호스트로 자동 연결.
-// prod 호스트의 username 부분은 `npx partykit deploy` 출력값과 일치해야 함(현재 추정값 horanghi).
+// 실시간 서버는 Cloudflare Workers 에 배포됩니다.
+// ⚠️ 배포 후 `npx wrangler deploy` 가 출력하는 주소
+//    https://minchan-card.<서브도메인>.workers.dev 의 호스트로 아래 값을 교체해야 합니다.
+const WORKERS_HOST = 'minchan-card.__SUBDOMAIN__.workers.dev'; // ← 배포 후 치환 필요
 const IS_LOCAL_DEV = ['localhost','127.0.0.1'].includes(location.hostname)
   || /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname); // 같은 공유기(LAN) 테스트 포함
 const PARTY_HOST = IS_LOCAL_DEV
-  ? `${location.hostname}:1999`
-  : 'minchan-card.horanghi.partykit.dev';
+  ? `${location.hostname}:8787`   // wrangler dev 기본 포트
+  : WORKERS_HOST;
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 혼동 문자(0/O/1/I/L) 제외
 const genCode = () => Array.from({length:4}, () => CODE_ALPHABET[Math.random()*CODE_ALPHABET.length|0]).join('');

@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "minchan-card",
+  "main": "server.js",
+  "compatibility_date": "2025-09-23",
+
+  // 방 하나 = Durable Object 하나.
+  // 바인딩 이름 "Main" 은 클라이언트가 접속하는 party 이름("main")과 매칭됩니다.
+  // (routePartykitRequest 는 /parties/:party/:room 의 :party 를 바인딩 이름과 대소문자 무시 매칭)
+  "durable_objects": {
+    "bindings": [
+      { "name": "Main", "class_name": "MinchanCard" }
+    ]
+  },
+
+  // 무료 플랜의 Durable Objects 는 SQLite 백엔드를 사용합니다.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["MinchanCard"] }
+  ],
+
+  "observability": { "enabled": true }
+}

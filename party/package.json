@@ -1,8 +1,15 @@
 {
-  "name": "minchan-card-party",
+  "name": "minchan-card",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "partyserver": "^0.5.8"
+  },
   "devDependencies": {
-    "partykit": "^0.0.115"
+    "wrangler": "^4.114.0"
   }
 }
