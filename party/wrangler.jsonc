@@ -9,13 +9,17 @@
   // (routePartykitRequest 는 /parties/:party/:room 의 :party 를 바인딩 이름과 대소문자 무시 매칭)
   "durable_objects": {
     "bindings": [
-      { "name": "Main", "class_name": "MinchanCard" }
+      { "name": "Main", "class_name": "MinchanCard" },
+      // 방 목록 등록소(전역 1개). 클라이언트는 party "lobby" 로 접속합니다.
+      { "name": "Lobby", "class_name": "Lobby" }
     ]
   },
 
   // 무료 플랜의 Durable Objects 는 SQLite 백엔드를 사용합니다.
+  // 기존 마이그레이션(v1)은 그대로 두고 새 클래스는 v2 로 추가해야 합니다.
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["MinchanCard"] }
+    { "tag": "v1", "new_sqlite_classes": ["MinchanCard"] },
+    { "tag": "v2", "new_sqlite_classes": ["Lobby"] }
   ],
 
   "observability": { "enabled": true }

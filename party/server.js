@@ -47,6 +47,8 @@ const ICONS = ['🟢','🔵','🔴'];
 const MAX_PLAYERS = 3;
 const LOG_CAP = 80;
 const START_HP = 10; // 시작 체력(=최대 체력). 회복 포션으로 최대치가 더 올라갈 수 있다.
+const LOBBY_KEY = 'global';          // 방 등록소 Durable Object 는 전역 1개
+const ROOM_TTL_MS = 2 * 60 * 60_000; // 등록소에 남은 유령 방 정리 기준(2시간)
 
 // 새 로비 게임 상태
 function freshLobby() {
@@ -71,6 +73,7 @@ function displayName(nick, seat) {
 export class MinchanCard extends Server {
   // hibernate는 기본 OFF — 활성 중 메모리 유지(this.game·연결 안정). 유휴 시 evict되면 클라가 재접속.
   game = null;
+  lobbySig = ''; // 방 등록소에 마지막으로 보고한 요약(중복 보고 방지)
 
   // DO (재)기동 시 저장된 상태 복원 — 재접속의 기반
   async onStart() {
@@ -430,6 +433,92 @@ export class MinchanCard extends Server {
     }
     // 상태 백업 (재접속/DO eviction 대비) — 단일 지점
     this.ctx.storage.put('game', this.game);
+    this.reportToLobby();
+  }
+
+  // ===== 방 목록 등록소에 현황 보고 =====
+  // 카드를 낼 때마다 보내면 낭비라, 요약(인원·단계·이름)이 바뀔 때만 보낸다.
+  reportToLobby() {
+    const g = this.game;
+    const players = g ? g.players.length : 0;
+    const phase = g ? g.phase : 'lobby';
+    const names = g ? g.players.map(p => p.nick) : [];
+    const sig = `${players}|${phase}|${names.join(',')}`;
+    if (sig === this.lobbySig) return;
+    this.lobbySig = sig;
+    try {
+      const stub = this.env.Lobby.get(this.env.Lobby.idFromName(LOBBY_KEY));
+      this.ctx.waitUntil(stub.updateRoom({
+        code: String(this.name || '').toUpperCase(), players, phase, names,
+      }));
+    } catch (e) {
+      // 등록소 장애가 게임 진행을 막지 않도록 무시
+    }
+  }
+}
+
+// ===== 방 등록소 (Durable Object 1개) =====
+// 게임 방 DO 들이 자기 현황을 여기에 등록하고, 로비 화면 클라이언트들이 구독한다.
+export class Lobby extends Server {
+  rooms = null;
+
+  async load() {
+    if (!this.rooms) this.rooms = (await this.ctx.storage.get('rooms')) || {};
+    return this.rooms;
+  }
+  async onStart() { await this.load(); }
+
+  async onConnect(conn) {
+    await this.load();
+    conn.send(JSON.stringify({ type: 'rooms', rooms: this.publicList() }));
+  }
+
+  async onMessage(sender, raw) {
+    let m; try { m = JSON.parse(raw); } catch { return; }
+    if (m && m.type === 'list') {
+      await this.load();
+      sender.send(JSON.stringify({ type: 'rooms', rooms: this.publicList() }));
+    }
+  }
+
+  // 게임 방 DO 가 RPC 로 호출 (DO 직접 호출이라 onStart 가 안 돌 수 있어 load() 로 방어)
+  async updateRoom(info) {
+    await this.load();
+    const code = info && info.code;
+    if (!code) return;
+    if (info.players > 0) {
+      this.rooms[code] = {
+        code, players: info.players, phase: info.phase,
+        names: Array.isArray(info.names) ? info.names.slice(0, MAX_PLAYERS) : [],
+        updatedAt: Date.now(),
+      };
+    } else {
+      delete this.rooms[code];
+    }
+    this.prune();
+    await this.ctx.storage.put('rooms', this.rooms);
+    this.broadcastList();
+  }
+
+  // 방 DO 가 갑자기 사라져 남은 유령 항목 정리
+  prune() {
+    const cutoff = Date.now() - ROOM_TTL_MS;
+    for (const [code, r] of Object.entries(this.rooms)) {
+      if (!r || !r.players || r.updatedAt < cutoff) delete this.rooms[code];
+    }
+  }
+
+  publicList() {
+    return Object.values(this.rooms || {})
+      .filter(r => r && r.players > 0)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 30)
+      .map(r => ({ code: r.code, players: r.players, phase: r.phase, names: r.names }));
+  }
+
+  broadcastList() {
+    const msg = JSON.stringify({ type: 'rooms', rooms: this.publicList() });
+    for (const c of this.getConnections()) c.send(msg);
   }
 }
 
