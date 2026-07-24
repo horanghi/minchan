@@ -46,6 +46,7 @@ export const DECK_RECIPE = {
 const ICONS = ['🟢','🔵','🔴'];
 const MAX_PLAYERS = 3;
 const LOG_CAP = 80;
+const START_HP = 10; // 시작 체력(=최대 체력). 회복 포션으로 최대치가 더 올라갈 수 있다.
 
 // 새 로비 게임 상태
 function freshLobby() {
@@ -158,7 +159,7 @@ export class MinchanCard extends Server {
     this.game.players.push({
       seat, nick, name: displayName(nick, seat), token,
       connId: sender.id, connected: true,
-      hp: 5, max: 5, hand: [], shield: false, star: false, skip: false, poison: 0, dead: false,
+      hp: START_HP, max: START_HP, hand: [], shield: false, star: false, skip: false, poison: 0, dead: false,
     });
     sender.send(JSON.stringify({ type: 'joined', seat, token }));
     this.log('sys', `${displayName(nick, seat)} 입장!`);
@@ -207,7 +208,7 @@ export class MinchanCard extends Server {
     g.seq = 0;
     g.logs = [];
     g.players.forEach(p => {
-      p.hp = 5; p.max = 5; p.hand = this.draw(3);
+      p.hp = START_HP; p.max = START_HP; p.hand = this.draw(3);
       p.shield = false; p.star = false; p.skip = false; p.poison = 0; p.dead = false;
     });
     g.phase = 'playing';

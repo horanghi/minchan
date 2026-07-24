@@ -110,7 +110,8 @@
   .seat.sc2 .info .nm{color:#a3341f;}
   /* 내 자리 강조: 크레파스로 한 번 더 두른 느낌 (turnGlow/targetable 은 outline 이라 안 겹침) */
   .seat.mine .info{border-width:3.5px;box-shadow:0 0 0 3px rgba(255,233,199,.95),2px 3px 0 rgba(0,0,0,.18);}
-  .seat .info .hp{font-size:13.5px;line-height:1.2;}
+  /* 체력 10개(회복 포션으로 더 늘 수도)라 하트가 길어짐 — 살짝 줄이고, 넘치면 줄바꿈 */
+  .seat .info .hp{font-size:11px;line-height:1.18;letter-spacing:-.3px;overflow-wrap:anywhere;}
   .seat .info .bd{font-size:11px;line-height:1.2;min-height:13px;}
   .seat.turnGlow .info{outline:3px dashed #d98a3c;outline-offset:2px;}
   .seat.targetable .info{outline:3px solid #c0392b;outline-offset:2px;cursor:pointer;animation:pulse 1s infinite;}
