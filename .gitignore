@@ -7,3 +7,7 @@ launcher.jpeg
 .DS_Store
 .vercel
 .env*
+
+# PartyKit 서버 의존성
+party/node_modules/
+party/.partykit/

@@ -1,0 +1,8 @@
+{
+  "name": "minchan-card-party",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "partykit": "^0.0.115"
+  }
+}
