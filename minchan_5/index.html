@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#87ceeb">
+<title>동물 길건너 🐔</title>
+<style>
+  :root {
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --ink: #fdfbf5;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body {
+    overflow:hidden; background:#87ceeb; touch-action:none;
+    font-family:'Apple SD Gothic Neo','Pretendard','Segoe UI',system-ui,sans-serif;
+    color:var(--ink);
+  }
+  canvas { display:block; touch-action:none; }
+
+  /* ── HUD ───────────────────────────────────────────── */
+  #hud {
+    position:fixed; inset:0; pointer-events:none; z-index:10;
+    display:none;
+  }
+  #score {
+    position:absolute; top:calc(18px + var(--safe-t)); left:50%; transform:translateX(-50%);
+    font-size:clamp(46px, 12vw, 68px); font-weight:900; letter-spacing:-.02em;
+    text-shadow:0 4px 0 rgba(0,0,0,.22), 0 10px 24px rgba(0,0,0,.3);
+    font-variant-numeric:tabular-nums;
+  }
+  #biome {
+    position:absolute; top:calc(96px + var(--safe-t)); left:50%; transform:translateX(-50%);
+    font-size:13px; font-weight:700; letter-spacing:.18em;
+    padding:5px 16px; border-radius:99px;
+    background:rgba(0,0,0,.24); backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.18);
+    opacity:0; transition:opacity .5s;
+  }
+  #biome.show { opacity:1; }
+
+  /* ── 오버레이 ──────────────────────────────────────── */
+  .overlay {
+    position:fixed; inset:0; z-index:20;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px; text-align:center;
+    background:radial-gradient(ellipse at 50% 35%, rgba(10,22,32,.55), rgba(6,14,22,.86));
+    backdrop-filter:blur(3px);
+  }
+  .overlay[hidden] { display:none; }
+  .card {
+    display:flex; flex-direction:column; align-items:center;
+    animation:rise .45s cubic-bezier(.2,.9,.3,1.1) both;
+  }
+  @keyframes rise { from { opacity:0; transform:translateY(18px) scale(.96); } }
+
+  .title {
+    font-size:clamp(34px, 9vw, 54px); font-weight:900; letter-spacing:-.02em;
+    line-height:1.15; margin-bottom:10px;
+    text-shadow:0 3px 0 rgba(0,0,0,.28), 0 14px 30px rgba(0,0,0,.4);
+  }
+  .subtitle { font-size:15px; color:#b9c6d2; margin-bottom:34px; line-height:1.7; }
+
+  .big-score {
+    font-size:clamp(64px, 18vw, 96px); font-weight:900; line-height:1;
+    font-variant-numeric:tabular-nums;
+    text-shadow:0 4px 0 rgba(0,0,0,.25), 0 16px 34px rgba(0,0,0,.45);
+  }
+  .score-label { font-size:13px; letter-spacing:.22em; color:#8ea0b0; margin-bottom:8px; }
+  .best { font-size:17px; font-weight:700; color:#ffd45e; margin:14px 0 30px; }
+  .best.new { animation:pop .6s cubic-bezier(.2,1.6,.4,1) both; }
+  @keyframes pop { 0% { transform:scale(.6); opacity:0; } 60% { transform:scale(1.12); } }
+
+  .btn {
+    pointer-events:auto; cursor:pointer; border:none;
+    padding:15px 54px; border-radius:16px;
+    font-size:20px; font-weight:800; font-family:inherit; color:#fff;
+    background:linear-gradient(180deg,#3fd47c,#22a45c);
+    box-shadow:0 5px 0 #16713f, 0 12px 28px rgba(0,0,0,.42);
+    transition:transform .09s, box-shadow .09s;
+  }
+  .btn:active { transform:translateY(4px); box-shadow:0 1px 0 #16713f, 0 6px 14px rgba(0,0,0,.4); }
+  .btn.blue { background:linear-gradient(180deg,#56b4ff,#2b7fd4); box-shadow:0 5px 0 #1c5b9b, 0 12px 28px rgba(0,0,0,.42); }
+  .btn.blue:active { box-shadow:0 1px 0 #1c5b9b, 0 6px 14px rgba(0,0,0,.4); }
+
+  .hint { margin-top:26px; font-size:13px; color:#8b99a6; line-height:1.9; }
+  .hint kbd {
+    display:inline-block; min-width:22px; padding:2px 6px; margin:0 1px;
+    border-radius:6px; background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.16); font-family:inherit; font-size:12px;
+  }
+
+  /* ── 로딩 ──────────────────────────────────────────── */
+  #loading { background:linear-gradient(180deg,#0d1a26,#060e16); }
+  .bar {
+    width:min(280px, 70vw); height:7px; border-radius:99px; overflow:hidden;
+    background:rgba(255,255,255,.12); margin-top:26px;
+  }
+  .bar > i {
+    display:block; height:100%; width:0%; border-radius:99px;
+    background:linear-gradient(90deg,#3fd47c,#8ce8b0);
+    transition:width .25s ease-out;
+  }
+  .loading-note { margin-top:14px; font-size:12.5px; color:#7f8d9b; font-variant-numeric:tabular-nums; }
+  .spinner {
+    font-size:56px; animation:hop 1.1s cubic-bezier(.3,.1,.4,1) infinite;
+  }
+  @keyframes hop {
+    0%,100% { transform:translateY(0) scaleY(1); }
+    30%     { transform:translateY(-16px) scaleY(1.08); }
+    55%     { transform:translateY(0) scaleY(.9); }
+  }
+
+  /* ── 조작 ──────────────────────────────────────────── */
+  #dpad {
+    position:fixed; right:calc(16px); bottom:calc(20px + var(--safe-b));
+    display:none; grid-template-columns:repeat(3, 62px); grid-template-rows:repeat(2, 62px);
+    gap:6px; z-index:15;
+  }
+  #dpad.show { display:grid; }
+  #dpad button {
+    pointer-events:auto; border:none; cursor:pointer; padding:0;
+    font-size:24px; color:#fff; font-family:inherit;
+    background:rgba(255,255,255,.18); backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.24); border-radius:14px;
+    transition:transform .07s, background .15s;
+  }
+  #dpad button:active { transform:scale(.9); background:rgba(255,255,255,.34); }
+  .dp-up { grid-area:1/2; }
+  .dp-left { grid-area:2/1; }
+  .dp-right { grid-area:2/3; }
+
+  #homeBtn {
+    position:fixed; top:calc(14px + var(--safe-t)); left:14px; z-index:30;
+    padding:9px 15px; font-size:13px; font-weight:700;
+    color:#fff; text-decoration:none;
+    background:rgba(0,0,0,.3); backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.24); border-radius:11px;
+    transition:transform .09s;
+  }
+  #homeBtn:active { transform:scale(.94); }
+
+  @media (max-width:420px) {
+    #dpad { grid-template-columns:repeat(3, 56px); grid-template-rows:repeat(2, 56px); }
+  }
+</style>
+</head>
+<body>
+
+<a id="homeBtn" href="../index.html">🎮 게임 선택</a>
+
+<div id="hud">
+  <div id="score">0</div>
+  <div id="biome"></div>
+</div>
+
+<div id="dpad">
+  <button class="dp-up"    data-dx="0"  data-dz="-1" aria-label="앞으로">▲</button>
+  <button class="dp-left"  data-dx="-1" data-dz="0"  aria-label="왼쪽">◀</button>
+  <button class="dp-right" data-dx="1"  data-dz="0"  aria-label="오른쪽">▶</button>
+</div>
+
+<div class="overlay" id="loading">
+  <div class="card">
+    <div class="spinner">🐔</div>
+    <div class="bar"><i id="loadBar"></i></div>
+    <div class="loading-note" id="loadNote">동물들을 불러오는 중… 0%</div>
+  </div>
+</div>
+
+<div class="overlay" id="menu" hidden>
+  <div class="card">
+    <div class="title">🐔 동물 길건너</div>
+    <div class="subtitle">농장을 지나 숲으로, 숲을 지나 사바나로.<br>동물을 피해 얼마나 멀리 갈 수 있을까?</div>
+    <button class="btn" id="btnStart">시 작</button>
+    <div class="hint">
+      <kbd>↑</kbd><kbd>←</kbd><kbd>→</kbd> 또는 <kbd>W</kbd><kbd>A</kbd><kbd>D</kbd><br>
+      모바일은 화면을 밀거나 오른쪽 버튼으로
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="gameover" hidden>
+  <div class="card">
+    <div class="score-label">점수</div>
+    <div class="big-score" id="finalScore">0</div>
+    <div class="best" id="bestScore">최고 0</div>
+    <button class="btn blue" id="btnRetry">다시하기</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

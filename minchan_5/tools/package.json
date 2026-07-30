@@ -1,0 +1,16 @@
+{
+  "name": "minchan5-tools",
+  "private": true,
+  "type": "module",
+  "description": "개발 전용. 게임 배포에는 포함되지 않는다(.vercelignore).",
+  "scripts": {
+    "e2e": "node --test e2e.test.mjs",
+    "optimize": "node optimize-models.mjs"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.0.0",
+    "@gltf-transform/extensions": "^4.0.0",
+    "@gltf-transform/functions": "^4.0.0",
+    "playwright": "^1.49.0"
+  }
+}

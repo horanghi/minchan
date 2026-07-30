@@ -12,3 +12,7 @@ launcher.jpeg
 party/node_modules/
 party/.wrangler/
 party/.partykit/
+
+# minchan_5 개발 도구 (배포 제외)
+minchan_5/tools/node_modules/
+minchan_5/tools/screenshots/
