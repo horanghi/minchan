@@ -210,7 +210,17 @@ test('모든 종에 이동·대기 클립 이름이 있다', () => {
     assert.ok(s.clips.walk, `${id} 이동 클립 없음`);
     assert.ok(s.clips.run, `${id} 질주 클립 없음`);
     assert.ok(s.clips.idle, `${id} 대기 클립 없음`);
-    assert.ok(s.height || s.length, `${id} 크기 기준 없음`);
+    assert.ok(s.height > 0, `${id} 목표 키 없음`);
     assert.ok(s.hit > 0 && s.hit <= 1, `${id} 히트박스 배율 ${s.hit}`);
   }
+});
+
+test('뱀은 진행축으로 길게 늘여 놓는다', () => {
+  // 모델이 고개를 든 코브라 자세라 손대지 않으면 진행축 0.32 짜리 세로
+  // 조각이 된다 — 모든 동물 중 가장 짧아서 "초고속 위험" 역할이 뒤집힌다.
+  // stretch 를 지우거나 1 로 되돌리면 이 테스트가 잡는다.
+  assert.ok(SPECIES.snake.stretch >= 2.5,
+    `뱀 stretch ${SPECIES.snake.stretch} 로는 진행축이 충분히 길지 않다`);
+  assert.ok(SPECIES.snake.height < 0.6,
+    '뱀은 낮게 깔려야 길어 보인다');
 });

@@ -40,10 +40,11 @@ function prepare(gltf, spec) {
   // 스케일 역산은 바인드 포즈 바운딩박스 기준.
   const raw = new THREE.Box3().setFromObject(root);
   const size = raw.getSize(new THREE.Vector3());
-  const scale = spec.length
-    ? spec.length / Math.max(size.x, size.z)   // 뱀처럼 똬리를 튼 모델은 길이 기준
-    : spec.height / size.y;
+  const scale = spec.height / size.y;
   root.scale.setScalar(scale);
+  // stretch 는 모델 앞뒤축(local Z)만 늘린다. 이 축이 90° 회전 뒤 진행축이
+  // 되므로, 실루엣을 진행 방향으로만 길게 만들 수 있다.
+  if (spec.stretch) root.scale.z *= spec.stretch;
 
   // 발바닥을 y=0 에 맞춘다.
   const scaled = new THREE.Box3().setFromObject(root);

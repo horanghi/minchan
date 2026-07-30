@@ -101,13 +101,18 @@ export const SPECIES = {
     clips: { walk: 'Jump', run: 'Jump', idle: 'Idle', death: null },
   },
 
-  // 뱀은 고개를 든 코브라 자세로 저작돼 있다. 길이로 스케일을 잡으면
-  // 세로 바운딩이 커져 닭보다 커지므로(1.34) 키 기준으로 맞춘다.
-  // 리깅된 Snake_Walk 가 있어 사행은 버텍스 셰이더 없이 해결된다.
-  // speedMul: 같은 바이오미 안에서도 뱀만 확연히 빠르게 — "초고속 위험" 역할.
+  // 뱀은 고개를 든 코브라 자세로 저작돼 있다 — 몸을 말고 서 있어서 그대로
+  // 쓰면 진행축 0.32 짜리 세로 조각이 된다. 모든 동물 중 가장 짧은 장애물이
+  // 돼서 속도를 아무리 올려도 소보다 피하기 쉬워지고, "초고속 위험"이라는
+  // 역할이 뒤집힌다(원본 뱀은 진행축 3.16 으로 가장 긴 장애물이었다).
+  //
+  // stretch 로 진행축만 늘려 길게 미끄러지는 실루엣을 만든다. 스키닝은
+  // 로컬 공간에서 끝난 뒤 노드 변환이 걸리므로 포즈가 함께 늘어날 뿐이고,
+  // 플랫 셰이딩이라 노멀이 조금 기울어도 티가 나지 않는다.
+  // speedMul: 같은 바이오미 안에서도 뱀만 확연히 빠르게.
   snake: {
     file: 'extra_Snake', label: '뱀',
-    height: 0.60, gait: 'slither', moveRef: 2.6, hit: 0.62, speedMul: 1.45,
+    height: 0.46, stretch: 3.4, gait: 'slither', moveRef: 2.6, hit: 0.72, speedMul: 1.45,
     clips: { walk: 'Snake_Walk', run: 'Snake_Walk', idle: 'Snake_Idle', death: null },
   },
 };
