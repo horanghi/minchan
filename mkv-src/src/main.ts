@@ -225,9 +225,23 @@ const resultsScreen = new ResultsScreen(host, {
   onSkip: () => { if (results) resultsElapsedMs = rollingDurationMs(results) },
   onContinue: () => {
     resultsScreen.close()
-    // 보상이 먼저고 설문이 나중이다. 카드는 showOnce 라 첫 클리어에서만 뜬다.
+
+    // 다음 판이 있으면 **곧장 넘어간다.**
+    //
+    // 설문 카드는 화면을 덮고 입력까지 끊는다. 클리어마다 띄우면 "다음
+    // 스테이지" 를 눌러도 아무 일도 안 일어난 것처럼 보인다 — 실제로는
+    // 넘어간 판 위에 카드가 얹혀 있고 조작이 죽어 있는 것이다.
+    // 판이 하나뿐이던 시절에는 클리어가 곧 끝이라 맞는 순서였다.
+    //
+    // 대신 버튼만 세워 둔다. 보낼 마음이 있는 사람은 언제든 누를 수 있다.
+    // 카드가 저절로 뜨는 것은 마지막 판을 끝냈을 때다. → prompts/m1-gate.md
+    if (advanceStage()) {
+      playtest.revealEntry()
+      return
+    }
+
+    // 마지막 판이었다. 보상이 먼저고 설문이 나중이다.
     playtest.promptSurvey()
-    advanceStage()
   },
 })
 
