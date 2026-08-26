@@ -18,12 +18,27 @@ import { EMPTY_TOUCH, frameOfTouch, press, release, releaseAll, type TouchState 
 /** 손가락이 닿을 최소 크기. 이보다 작으면 달리면서 누르다 빗나간다. */
 const TOUCH_TARGET_PX = 56
 
+/** 조작판 둘레 여백. */
+const GUTTER_PX = 14
+
+/**
+ * 조작판이 차지하는 높이.
+ *
+ * 게임 화면은 **이만큼 위로 올라간다.** 겹쳐 두면 버튼이 바닥선과 플레이어를
+ * 가린다 — 가로로 들면 시작하자마자 자기 캐릭터가 안 보인다. 발밑이 안 보이는
+ * 플랫포머는 조작이 있으나 마나다.
+ */
+export const CONTROLS_HEIGHT_PX = TOUCH_TARGET_PX + 12 + GUTTER_PX * 2
+
 const PAD = [
-  'position:absolute', 'inset:0', 'pointer-events:none',
+  // 화면에 고정한다. 게임 화면 안에 두면 그쪽 여백 계산에 딸려 들어간다.
+  'position:fixed', 'left:0', 'right:0', 'bottom:0',
+  `height:${CONTROLS_HEIGHT_PX}px`, 'box-sizing:border-box',
+  'pointer-events:none', 'z-index:30',
   'display:flex', 'justify-content:space-between', 'align-items:flex-end',
-  'padding:14px', 'gap:10px',
-  // iOS 사파리의 홈 바·주소창을 피한다.
-  'padding-bottom:max(14px, env(safe-area-inset-bottom))',
+  `padding:${GUTTER_PX}px`, 'gap:10px',
+  // iOS 사파리의 홈 바를 피한다.
+  `padding-bottom:max(${GUTTER_PX}px, env(safe-area-inset-bottom))`,
   'user-select:none', '-webkit-user-select:none', 'touch-action:none',
 ].join(';')
 
@@ -76,6 +91,7 @@ export class TouchControls {
     )
 
     this.root.append(left, right)
+    // `#app` 이 아니라 문서에 붙인다 — 게임 화면의 여백과 서로 밀지 않게.
     parent.appendChild(this.root)
 
     // 손가락을 뗀 자리가 버튼 밖일 수 있다. 문서 전체에서 받는다.

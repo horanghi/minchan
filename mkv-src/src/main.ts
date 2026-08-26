@@ -60,7 +60,7 @@ import {
 } from './core/audio.ts'
 import { INITIAL_HUD, stepHud, type HudState } from './ui/hud/hud.ts'
 import { RotateNotice } from './ui/menus/rotateNotice.ts'
-import { TouchControls } from './ui/touchControls.ts'
+import { CONTROLS_HEIGHT_PX, TouchControls } from './ui/touchControls.ts'
 import { NO_FADE, stepFade, type Fade } from './fx/fade.ts'
 import { EMPTY_TALLY, tally } from './telemetry/frameTally.ts'
 import { Playtest } from './ui/report/playtest.ts'
@@ -158,11 +158,14 @@ const keyboard = new KeyboardSource(window)
  */
 // 폰이면 화면 조작판을 띄운다. 없으면 열어 봐야 가만히 선 화면만 보다 닫고,
 // 사망이 0이라 결과를 보낼 버튼도 안 뜬다 — 테스터 한 명이 조용히 사라진다.
-const touch = new TouchControls(host)
+const touch = new TouchControls(document.body)
 const rotateNotice = new RotateNotice(host)
 const usesTouch = needsKeyboardNotice(browserMediaQuery())
 if (usesTouch) {
   touch.show()
+  // 게임 화면을 조작판 위로 올린다. 겹치면 버튼이 바닥선과 플레이어를 가린다.
+  host.style.paddingBottom = `${CONTROLS_HEIGHT_PX}px`
+  host.style.boxSizing = 'border-box'
   // 키보드 힌트는 치운다. 조작판 위에 겹쳐 뜨는 데다, 있지도 않은 키를
   // 알려 주는 꼴이 된다.
   hint.dismiss()
@@ -817,7 +820,9 @@ function metricsOf(frameMs: number): DebugMetrics {
 
 // --- 뷰포트 · 디버그 키 ----------------------------------------------------------
 function applyViewport(): void {
-  const vp = computeViewport(window.innerWidth, window.innerHeight)
+  // 조작판이 있으면 그만큼 뺀 자리에 맞춘다. 안 그러면 배율이 커져 겹친다.
+  const usable = window.innerHeight - (touch.isVisible ? CONTROLS_HEIGHT_PX : 0)
+  const vp = computeViewport(window.innerWidth, usable)
   app.canvas.style.width = `${vp.width}px`
   app.canvas.style.height = `${vp.height}px`
 }
