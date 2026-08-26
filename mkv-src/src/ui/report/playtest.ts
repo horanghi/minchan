@@ -1,4 +1,7 @@
-import type { KeyboardSource } from '../../core/keyboard.ts'
+/** 카드가 열려 있는 동안 입력을 끊을 수 있는 것. 키보드와 화면 조작판 둘 다. */
+export interface Suspendable {
+  setSuspended(suspended: boolean): void
+}
 import type { Difficulty } from '../../game/difficulty.ts'
 import { totalLoadBytes, type SizedEntry } from '../../telemetry/loadSize.ts'
 import { toJson } from '../../telemetry/payload.ts'
@@ -50,7 +53,7 @@ export class Playtest {
   private entries: readonly SizedEntry[] = []
   private revealed = false
 
-  constructor(host: HTMLElement, private readonly keyboard: KeyboardSource) {
+  constructor(host: HTMLElement, private readonly input: Suspendable) {
     const stored = withId(load(browserStore()), makeId())
     this.elapsedMs = stored.playMs
     this.state = resume(stored)
@@ -64,7 +67,7 @@ export class Playtest {
       },
       getPayload: () => toJson(this.state.session, this.loadBytes),
       // 카드가 열려 있는 동안 키 입력은 게임이 아니라 메모로 간다.
-      onOpenChange: (open) => this.keyboard.setSuspended(open),
+      onOpenChange: (open) => this.input.setSuspended(open),
     })
     if (this.revealed) this.card.revealEntry()
 

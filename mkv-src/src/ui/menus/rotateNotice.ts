@@ -1,16 +1,16 @@
 /**
- * "키보드가 필요합니다" 안내.
+ * "가로로 돌려주세요" 안내.
  *
- * 폰으로 링크를 열었을 때 뜬다. 조작이 키보드뿐이라 그대로 두면 가만히
- * 서 있는 화면만 보게 되고, 사망이 없으니 결과를 보내는 버튼도 뜨지 않는다.
- * **테스터를 잃는 대신 다시 오게 만드는 것**이 이 화면의 일이다.
+ * 화면 조작판이 생겨 폰에서도 할 수 있게 됐지만, 세로로 들면 16:9 게임이
+ * 손톱만 하게 줄고 조작판이 화면을 절반 넘게 먹는다. 구덩이 너머가 안 보이는
+ * 채로 고정 궤도 점프를 하라는 것이나 같다.
  *
  * 닫을 수 있게 둔다 — 판정이 틀렸을 때 게임을 막아 버리면 더 나쁘다.
  *
  * 계측 대상이 아니다 — vitest coverage 에서 ui/ 제외.
  */
 
-export class KeyboardNotice {
+export class RotateNotice {
   private readonly root: HTMLElement
 
   constructor(parent: HTMLElement) {
@@ -33,15 +33,15 @@ export class KeyboardNotice {
     ].join(';')
 
     const title = document.createElement('div')
-    title.textContent = '키보드가 필요합니다'
+    title.textContent = '가로로 돌려주세요'
     title.style.cssText = 'font-size:17px;letter-spacing:.18em'
 
     const body = document.createElement('div')
-    body.textContent = '방향키와 Z · X 로 하는 게임이라 폰에서는 움직일 수 없습니다.\n노트북이나 데스크톱에서 같은 주소를 열어 주세요.'
+    body.textContent = '가로로 들어야 앞이 보입니다.\n세로로는 구덩이 너머가 화면 밖입니다.'
     body.style.cssText = 'color:#BEB4C6;font-size:12px;white-space:pre-line;max-width:340px'
 
     const close = document.createElement('button')
-    close.textContent = '그래도 볼래요'
+    close.textContent = '이대로 할래요'
     close.style.cssText = [
       'margin-top:4px',
       'padding:8px 16px',

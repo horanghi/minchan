@@ -59,7 +59,8 @@ import {
   DUCK, INITIAL_MUSIC, duckMusic, silence, stepMusic, toBossTheme, type MusicState,
 } from './core/audio.ts'
 import { INITIAL_HUD, stepHud, type HudState } from './ui/hud/hud.ts'
-import { KeyboardNotice } from './ui/menus/keyboardNotice.ts'
+import { RotateNotice } from './ui/menus/rotateNotice.ts'
+import { TouchControls } from './ui/touchControls.ts'
 import { NO_FADE, stepFade, type Fade } from './fx/fade.ts'
 import { EMPTY_TALLY, tally } from './telemetry/frameTally.ts'
 import { Playtest } from './ui/report/playtest.ts'
@@ -155,11 +156,30 @@ const keyboard = new KeyboardSource(window)
  * 유지율은 사람의 기억으로 잴 수 없으므로 빌드가 직접 센다.
  * 테스터에게는 지표를 보여주지 않는다 — 재는 걸 알면 행동이 달라진다.
  */
-// 폰으로 열었으면 먼저 알린다. 못 하는 채로 닫으면 테스터 한 명이 사라진다.
-const keyboardNotice = new KeyboardNotice(host)
-if (needsKeyboardNotice(browserMediaQuery())) keyboardNotice.show()
+// 폰이면 화면 조작판을 띄운다. 없으면 열어 봐야 가만히 선 화면만 보다 닫고,
+// 사망이 0이라 결과를 보낼 버튼도 안 뜬다 — 테스터 한 명이 조용히 사라진다.
+const touch = new TouchControls(host)
+const rotateNotice = new RotateNotice(host)
+if (needsKeyboardNotice(browserMediaQuery())) {
+  touch.show()
+  // 키보드 힌트는 치운다. 조작판 위에 겹쳐 뜨는 데다, 있지도 않은 키를
+  // 알려 주는 꼴이 된다.
+  hint.dismiss()
+  // 세로로 들면 게임이 손톱만 해진다. 돌리면 스스로 사라진다.
+  const portrait = () => window.innerHeight > window.innerWidth
+  const sync = (): void => { if (portrait()) rotateNotice.show(); else rotateNotice.close() }
+  sync()
+  window.addEventListener('resize', sync)
+  window.addEventListener('orientationchange', sync)
+}
 
-const playtest = new Playtest(host, keyboard)
+// 카드가 열리면 둘 다 끊는다. 하나만 끊으면 메모를 쓰는 동안 캐릭터가 움직인다.
+const playtest = new Playtest(host, {
+  setSuspended: (suspended: boolean) => {
+    keyboard.setSuspended(suspended)
+    touch.setSuspended(suspended)
+  },
+})
 // 지난 방문의 난이도와 저장된 세션이 다를 수 있다. 다르면 세션을 새로 연다.
 playtest.setDifficulty(difficulty)
 
@@ -383,7 +403,7 @@ app.ticker.add(() => {
   const frameMs = now - lastFrameAt
   lastFrameAt = now
 
-  const polled = keyboard.poll()
+  const polled = keyboard.poll() | touch.poll()
   pendingFrame |= polled
 
   // --- 일시정지 -------------------------------------------------------------
