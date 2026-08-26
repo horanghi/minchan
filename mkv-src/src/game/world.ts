@@ -36,6 +36,7 @@ import { boxOf } from '../physics/body.ts'
 import {
   INITIAL_CRUMBLE, resetCrumble, tickCrumble, touchCrumbling, type CrumbleState,
 } from '../physics/crumble.ts'
+import { touchesHazard } from '../physics/hazardTile.ts'
 import type { Tilemap } from '../physics/tilemap.ts'
 import { advanceClip, playClip, startClip, releasesProjectile, type ClipState } from '../sprite/clip.ts'
 import { snapCamera, stepCamera, viewOf, type Camera } from './camera.ts'
@@ -92,7 +93,7 @@ export interface World {
  * 재시도율이 낮을 때 난이도를 낮추는 것 말고 할 수 있는 게 없다.
  * → prompts/m1-gate.md
  */
-export type DamageCause = EnemyKind | 'cairn' | 'pit' | 'timeout'
+export type DamageCause = EnemyKind | 'cairn' | 'pit' | 'hazard' | 'timeout'
 
 /** 이번 틱에 일어난 일. 연출과 소리가 여기에 반응한다. */
 export interface WorldEvents {
@@ -361,6 +362,13 @@ export function stepWorld(world: World, input: InputState, balance: Balance): Wo
       vitals = result.vitals
       events = { ...events, hurt: true, armorBroke: result.broke, died: result.died, cause }
     }
+  }
+
+  // 불·독 타일도 갑옷과 무관하게 즉사다. 막지 않고 죽이는 타일이라
+  // 물리가 아니라 여기서 판정한다. → physics/hazardTile.ts
+  if (!vitals.dead && touchesHazard(map, playerBox)) {
+    vitals = fallIntoPit(vitals)
+    events = { ...events, died: true, cause: 'hazard' }
   }
 
   // 낙사는 갑옷과 무관하게 즉사다.

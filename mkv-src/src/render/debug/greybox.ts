@@ -24,6 +24,8 @@ const COLOR = {
   crumbling: 0x8a5f14,
   crumblingWarn: 0xe23e4e,
   hazard: 0x7e1f2c,
+  /** 위험 타일의 윗면. 즉사하는 면이 어디부터인지 한 줄로 못박는다 */
+  hazardLip: 0xe8622e,
   body: 0x8695ac,
   bodyGrounded: 0xf0c04a,
   arc: 0x8a5f14,
@@ -79,7 +81,10 @@ export class GreyboxRenderer {
           // 위에서만 밟힌다는 것이 실루엣으로 읽혀야 한다.
           g.rect(x, y, size, 4).fill(COLOR.oneWay)
         } else if (kind === TILE.hazard) {
-          g.rect(x, y + size - 6, size, 6).fill(COLOR.hazard)
+          // **윗면을 밝힌다.** 죽는 면은 위쪽이다 — 딛는 순간이 곧 죽는 순간이다.
+          // 아래쪽에 얇은 띠만 그리면 바닥선 아래로 숨어, 빈칸과 구별되지 않는다.
+          g.rect(x, y, size, size).fill(COLOR.hazard)
+          g.rect(x, y, size, 3).fill(COLOR.hazardLip)
         } else if (kind === TILE.crumbling) {
           drawCrumbling(g, x, y, size, warningProgress(crumble, map, tx, ty))
         }

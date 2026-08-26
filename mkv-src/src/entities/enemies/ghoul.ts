@@ -1,6 +1,7 @@
 import { resolve, type Body } from '../../physics/body.ts'
 import type { Tilemap } from '../../physics/tilemap.ts'
 import { setState, type Enemy } from './enemy.ts'
+import { patrol } from './patrol.ts'
 
 /**
  * 좀비 (Ghoul) — HP 20.
@@ -27,14 +28,23 @@ export function stepGhoul(enemy: Enemy, map: Tilemap, gravity: number, dt: numbe
     return setState(risen, 'walk')
   }
 
+  // 발밑을 먼저 본다. 앞이 구덩이면 돌아서고, 양쪽 다 끊겼으면 선다.
+  // 이걸 안 하면 배치한 좀비가 첫 구덩이에서 전부 걸어 들어가 사라진다.
+  // → entities/enemies/patrol.ts
+  const step = patrol(enemy.body, map, enemy.facing)
+
   const vy = Math.min(480, enemy.body.vy + gravity * dt)
-  const moving: Body = { ...enemy.body, vx: enemy.facing * GHOUL.speed, vy }
+  const moving: Body = {
+    ...enemy.body,
+    vx: step.halt ? 0 : step.facing * GHOUL.speed,
+    vy,
+  }
   const resolved = resolve(moving, map, dt)
 
   // 벽에 막히면 돌아선다. 계속 밀면 제자리에서 떠는 것처럼 보인다.
   const facing = GHOUL.turnOnWall && resolved.body.hitWall
-    ? (enemy.facing === 1 ? -1 : 1)
-    : enemy.facing
+    ? (step.facing === 1 ? -1 : 1)
+    : step.facing
 
   return setState({ ...enemy, body: resolved.body, facing }, 'walk')
 }

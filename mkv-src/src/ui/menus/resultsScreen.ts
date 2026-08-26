@@ -88,10 +88,17 @@ export class ResultsScreen {
     return this.opened
   }
 
-  open(stageName: string): void {
+  /**
+   * `continueLabel` 은 다음에 무엇이 오는지 알려 준다.
+   *
+   * 다섯 판을 이어 하는데 버튼이 늘 "계속하기" 면, 다음 판으로 가는 것인지
+   * 이 판을 다시 하는 것인지 알 수 없다.
+   */
+  open(stageName: string, continueLabel = '계속하기'): void {
     if (this.opened) return
     this.opened = true
     this.title.textContent = `${stageName} CLEAR`
+    this.continueButton.textContent = continueLabel
     this.root.style.display = 'flex'
   }
 
