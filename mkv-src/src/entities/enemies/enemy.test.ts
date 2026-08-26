@@ -287,3 +287,58 @@ describe('맵 밖으로 떨어진 적', () => {
     expect(pruneEnemies([at(99999)])).toHaveLength(1)
   })
 })
+
+describe('좀비는 구덩이에 빠지지 않는다', () => {
+  /** 지면 ty2(y=32). 구덩이는 tx5~6 (x80~112) 이다. */
+  const PIT = parseTilemap([
+    '....................',
+    '....................',
+    '#####..#############',
+  ])
+  /** 지면 위에 선 좀비의 y. 키 22px. */
+  const STAND_Y = 2 * 16 - 22
+
+  it('구덩이 앞에서 돌아선다 — 걸어 들어가 사라지지 않는다', () => {
+    // 구덩이 오른쪽(x112~)에서 왼쪽을 보고 출발한다. 10초를 걸어도
+    // 구덩이 위로는 한 번도 나가지 않아야 한다.
+    let e = make('ghoul', 130, STAND_Y, 'walk')
+    let lowest = e.body.y
+    let leftmost = e.body.x
+    for (let i = 0; i < 600; i += 1) {
+      e = stepGhoul(e, PIT, GRAVITY, dt)
+      lowest = Math.max(lowest, e.body.y)
+      leftmost = Math.min(leftmost, e.body.x)
+    }
+
+    // 구덩이 왼쪽 벽(x112) 을 넘어 들어가지 않았다.
+    expect(leftmost).toBeGreaterThanOrEqual(112)
+    // 한 번도 지면 아래로 내려가지 않았다.
+    expect(lowest).toBeLessThanOrEqual(STAND_Y)
+  })
+
+  it('구덩이 위로 밀려나면 그대로 떨어진다 — 공중에서 멈추지 않는다', () => {
+    // 판단이 공중까지 걸리면 좀비가 허공에 서 있는 그림이 된다.
+    let e = make('ghoul', 88, 0, 'walk')
+    for (let i = 0; i < 30; i += 1) e = stepGhoul(e, PIT, GRAVITY, dt)
+    expect(e.body.y).toBeGreaterThan(STAND_Y)
+  })
+
+  it('양쪽이 다 끊긴 자리에서는 선다 — 제자리에서 떨지 않는다', () => {
+    const pillar = parseTilemap([
+      '....................',
+      '....................',
+      '.....#..............',
+    ])
+    let e = make('ghoul', 5 * 16 + 2, STAND_Y, 'walk')
+    const firstFacing = e.facing
+    for (let i = 0; i < 120; i += 1) e = stepGhoul(e, pillar, GRAVITY, dt)
+    expect(e.facing).toBe(firstFacing)
+    expect(e.body.x).toBeCloseTo(5 * 16 + 2, 1)
+  })
+
+  it('평지에서는 예전처럼 계속 전진한다 — 발밑 판단이 걸음을 막지 않는다', () => {
+    let e = make('ghoul', 100, GROUND - 22, 'walk')
+    for (let i = 0; i < 60; i += 1) e = stepGhoul(e, FLAT, GRAVITY, dt)
+    expect(e.body.x).toBeLessThan(100 - 10)
+  })
+})

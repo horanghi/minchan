@@ -6,6 +6,7 @@ import { DEATH_TIMELINE } from '../ui/hud/hud.ts'
 import { loadBalance } from '../data/load.ts'
 import { STAGE_1 } from '../data/stages/stage1.ts'
 import { CAIRN } from '../entities/bosses/cairn.ts'
+import { TILE, setTile } from '../physics/tilemap.ts'
 import { snapCamera } from './camera.ts'
 import {
   boundsOf, continueFrom, createWorld, stepWorld, RESPAWN_DELAY_TICKS, type World,
@@ -268,6 +269,20 @@ describe('사인 기록', () => {
     for (let i = 0; i < 60; i += 1) w = stepWorld(w, INITIAL_INPUT, balance).world
     return w
   }
+
+  it('불·독 타일에 닿으면 hazard 로 즉사한다 — 갑옷이 남아 있어도 죽는다', () => {
+    // 스테이지 1 에는 위험 타일이 없다. 플레이어 자리에 하나 심어서 잰다.
+    const w = fresh()
+    const tx = Math.floor(w.player.body.x / w.map.tileSize)
+    const ty = Math.floor(w.player.body.y / w.map.tileSize)
+    const burning: World = { ...w, map: setTile(w.map, tx, ty, TILE.hazard) }
+
+    const step = stepWorld(burning, INITIAL_INPUT, balance)
+    expect(step.events.died).toBe(true)
+    expect(step.events.cause).toBe('hazard')
+    // 강철 갑옷을 입고 있었는데도 한 번에 죽는다.
+    expect(w.vitals.armor).toBe('steel')
+  })
 
   it('낙사는 pit 이다', () => {
     const w = fresh()

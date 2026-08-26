@@ -12,7 +12,7 @@ import {
   type TimeControl,
 } from './core/timeControl.ts'
 import { loadBalance } from './data/load.ts'
-import { STAGE_1 } from './data/stages/stage1.ts'
+import { FIRST_STAGE, STAGES, nextStage, stageNumber } from './data/stages/stages.ts'
 import { frameFor } from './entities/player/animation.ts'
 import { emitsLight, isBlinking, isInvulnerable, pickUpRelic, spriteStateOf, takeHit } from './entities/player/vitals.ts'
 import { bodyBox, coreBox, isCoreExposed } from './entities/bosses/cairn.ts'
@@ -25,7 +25,7 @@ import { RELIC_LIGHT, limitLights, type Light } from './fx/light.ts'
 import { ARMOR_BREAK_TIMING, DEATH_TIMING } from './fx/sequence.ts'
 import { QUALITY_TIERS, createQuality, featuresFor, observeFps, setManual, type QualityState } from './fx/quality.ts'
 import { continueFrom, createWorld, stepWorld, type World } from './game/world.ts'
-import { sectionAt } from './game/stage.ts'
+import { sectionAt, type Stage } from './game/stage.ts'
 import {
   RUNNING, countdownNumber, isMenuOpen, isPlayable, pause as pauseGame,
   step as stepPause, toggle as togglePause, type PauseState,
@@ -76,7 +76,7 @@ import { GameOverScreen } from './ui/menus/gameOverScreen.ts'
  *
  *   ← →  이동   Z 점프   X 던지기   ↓ 웅크리기   R 처음부터
  *   F1 오버레이 · F2 궤도/히트박스 · F3 성유물 · F4 피격 · F5 화질 · F6 게이트 판정
- *   F7 슬로우모션 순환 · F8 프레임 한 칸 (Shift+F8 로 스텝 모드) — 개발 빌드만
+ *   F7 슬로우모션 순환 · F8 프레임 한 칸 (Shift+F8 로 스텝 모드) · F9 다음 스테이지 — 개발 빌드만
  */
 
 TextureSource.defaultOptions.scaleMode = 'nearest'
@@ -114,7 +114,14 @@ const MAX_UI_STEP_MS = 100
 let difficulty: Difficulty = loadDifficulty()
 const baseBalance = loadBalance()
 let balance = applyDifficulty(baseBalance, difficulty)
-let stage = applyDifficultyToStage(STAGE_1, difficulty)
+/**
+ * 지금 하고 있는 판. **난이도를 얹기 전의 원본**이다.
+ *
+ * 난이도를 바꾸면 원본에서 다시 얹어야 한다 — 이미 얹힌 것에 또 얹으면
+ * 적 밀도가 곱해지고 체크포인트는 두 번 잘린다.
+ */
+let baseStage: Stage = FIRST_STAGE
+let stage = applyDifficultyToStage(baseStage, difficulty)
 
 const app = new Application()
 await app.init({
@@ -197,7 +204,7 @@ const pauseMenu = new PauseMenu(host, {
     difficulty = next
     try { localStorage.setItem(DIFFICULTY_KEY, next) } catch { /* 저장 못 해도 계속한다 */ }
     balance = applyDifficulty(baseBalance, difficulty)
-    stage = applyDifficultyToStage(STAGE_1, difficulty)
+    stage = applyDifficultyToStage(baseStage, difficulty)
     // 계측도 새로 시작한다. 난이도가 섞인 기록은 게이트에서 읽을 수 없다.
     playtest.setDifficulty(difficulty)
     // 난이도가 바뀌면 판을 다시 시작한다. 도중에 체크포인트 수가 바뀌면
@@ -218,8 +225,9 @@ const resultsScreen = new ResultsScreen(host, {
   onSkip: () => { if (results) resultsElapsedMs = rollingDurationMs(results) },
   onContinue: () => {
     resultsScreen.close()
-    // 보상이 먼저고 설문이 나중이다.
+    // 보상이 먼저고 설문이 나중이다. 카드는 showOnce 라 첫 클리어에서만 뜬다.
     playtest.promptSurvey()
+    advanceStage()
   },
 })
 
@@ -353,8 +361,27 @@ let resultsElapsedMs = 0
 greybox.drawGrid(world.map)
 greybox.setGridVisible(showDebugBoxes)
 
+/**
+ * 다음 판으로 넘어간다. 마지막 판이었으면 아무것도 하지 않는다.
+ *
+ * 진행도를 저장하지는 않는다 — 이어 하기는 한 세션 안에서만 이어진다.
+ * 저장을 붙이려면 계측 세션(SESSION_VERSION)과 같이 설계해야 한다.
+ */
+function advanceStage(): boolean {
+  const next = nextStage(baseStage)
+  if (next === null) return false
+
+  baseStage = next
+  stage = applyDifficultyToStage(baseStage, difficulty)
+  reset()
+  return true
+}
+
 function reset(): void {
   world = createWorld(stage, balance)
+  // 판이 바뀌면 맵 크기가 달라진다. 디버그 격자를 다시 그리지 않으면
+  // 예전 판의 격자가 남아 새 지형과 어긋난 채로 보인다.
+  greybox.drawGrid(world.map)
   hud = INITIAL_HUD
   music = INITIAL_MUSIC
   run = createRun(stage.sections.length)
@@ -634,7 +661,11 @@ app.ticker.add(() => {
       enemyTotal: stage.enemies.length,
     })
     resultsElapsedMs = 0
-    resultsScreen.open(stage.name)
+    const last = nextStage(baseStage) === null
+    resultsScreen.open(
+      `STAGE ${stageNumber(baseStage)} · ${stage.name}`,
+      last ? '계속하기' : `다음 스테이지 (${stageNumber(baseStage) + 1}/${STAGES.length}) ▸`,
+    )
   }
   if (results !== null && resultsScreen.isOpen) {
     resultsElapsedMs += Math.min(frameMs, MAX_UI_STEP_MS)
@@ -863,6 +894,8 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault()
     timeControl = e.shiftKey ? toggleStepping(timeControl) : requestStep(timeControl)
   }
+  // 판을 넘겨 본다. 다섯 번째 판의 지형을 보려고 보스를 네 번 잡을 수는 없다.
+  if (DEV && e.key === 'F9') { e.preventDefault(); advanceStage() }
   if (e.key === 'F5') {
     e.preventDefault()
     const next = QUALITY_TIERS[(QUALITY_TIERS.indexOf(quality.tier) + 1) % QUALITY_TIERS.length]
@@ -889,5 +922,5 @@ if (DEV) {
       capture: async () => (await app.renderer.extract.base64(app.stage)) as string,
     },
   })
-  console.info(`[grimhollow] ${STAGE_1.name} — ${world.map.width}x${world.map.height} 타일, 적 ${world.enemies.length}`)
+  console.info(`[grimhollow] ${stage.name} — ${world.map.width}x${world.map.height} 타일, 적 ${world.enemies.length}`)
 }
