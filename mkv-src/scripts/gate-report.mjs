@@ -82,6 +82,10 @@ if (broken > 0) {
   console.log(`  \x1b[31m읽지 못한 꾸러미 ${broken}건.\x1b[0m 붙여넣다가 잘렸을 수 있다 —`)
   console.log(`  \x1b[31m그 사람에게 다시 받아라. 모르고 넘어가면 표본이 그만큼 준다.\x1b[0m`)
 }
+if (agg.touchTesters > 0) {
+  console.log(`  \x1b[90m화면 조작판 ${agg.touchTesters}명은 60fps 판정에서 뺐다 — 그 항목은 노트북 기준이다.`)
+  console.log(`  나머지 항목에는 그대로 들어간다.${RESET}`)
+}
 if (agg.staleDropped > 0) {
   const versions = agg.stale.map(([v, n]) => `v${v} ${n}명`).join(', ')
   console.log(`  \x1b[33m낡은 형식이라 뺀 것 ${agg.staleDropped}건 (${versions}).`)

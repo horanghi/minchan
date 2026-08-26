@@ -31,9 +31,16 @@ export interface Aggregate {
   /** 사망 수로 가중한 재시도율. 재는 사망이 없으면 null */
   readonly retryRate: number | null
   readonly totalDeaths: number
-  /** 프레임 수로 가중한 60fps 유지율 */
+  /**
+   * 프레임 수로 가중한 60fps 유지율. **화면 조작판 표본은 뺀다.**
+   *
+   * 게이트는 이 항목을 "중급 노트북에서" 로 정의한다. 폰 프레임을 같은
+   * 평균에 넣으면 노트북의 것도 폰의 것도 아닌 숫자가 된다.
+   */
   readonly heldRate: number | null
   readonly totalFrames: number
+  /** 60fps 판정에서 뺀 화면 조작판 표본 수 */
+  readonly touchTesters: number
   /** 클리어한 사람들의 시도 횟수 평균. 아무도 못 깼으면 null */
   readonly meanAttempts: number | null
   readonly cleared: number
@@ -120,9 +127,11 @@ export function aggregate(payloads: readonly Payload[]): Aggregate {
   }
 
   // 유지율 — 프레임 수로 가중한다. 30초 한 사람과 10분 한 사람이 같을 수 없다.
+  // **화면 조작판 표본은 뺀다** — 이 항목의 정의가 "중급 노트북에서" 다.
   let heldWeighted = 0
   let frames = 0
   for (const p of unique) {
+    if (p.touch) continue
     if (p.fps.held === null || p.fps.samples === 0) continue
     heldWeighted += p.fps.held * p.fps.samples
     frames += p.fps.samples
@@ -167,6 +176,7 @@ export function aggregate(payloads: readonly Payload[]): Aggregate {
       .map(([tx, count]) => [tx, count] as const)
       .sort((a, b) => b[1] - a[1] || a[0] - b[0]),
     causes,
+    touchTesters: unique.filter((p) => p.touch).length,
     builds: [...buildCounts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)),
     duplicatesDropped,
     staleDropped: received.length - all.length,

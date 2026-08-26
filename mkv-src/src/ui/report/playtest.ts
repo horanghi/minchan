@@ -8,7 +8,7 @@ import { toJson } from '../../telemetry/payload.ts'
 import { record, resume, type Observation, type RecorderState } from '../../telemetry/recorder.ts'
 import { MIN_DEATHS } from '../../telemetry/report.ts'
 import {
-  answerSurvey, closePending, withDifficulty, withId,
+  answerSurvey, closePending, withDifficulty, withId, withTouch,
   type Session, type Survey,
 } from '../../telemetry/session.ts'
 import { load, save } from '../../telemetry/storage.ts'
@@ -98,6 +98,19 @@ export class Playtest {
 
     this.panel.render(this.state.session, this.loadBytes, this.entries)
     if (this.elapsedMs - this.lastSavedAt >= SAVE_INTERVAL_MS) this.persist()
+  }
+
+  /**
+   * 이 기기가 화면 조작판을 쓴다고 알린다.
+   *
+   * 게이트의 60fps 항목은 "중급 노트북에서" 로 정의돼 있다. 어느 쪽에서 잰
+   * 프레임인지 적어 두지 않으면 합칠 때 갈라낼 수가 없다.
+   */
+  setTouch(touch: boolean): void {
+    const next = withTouch(this.state.session, touch)
+    if (next === this.state.session) return
+    this.state = { ...this.state, session: next }
+    this.persist()
   }
 
   /**

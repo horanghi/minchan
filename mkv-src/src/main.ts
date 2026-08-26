@@ -160,7 +160,8 @@ const keyboard = new KeyboardSource(window)
 // 사망이 0이라 결과를 보낼 버튼도 안 뜬다 — 테스터 한 명이 조용히 사라진다.
 const touch = new TouchControls(host)
 const rotateNotice = new RotateNotice(host)
-if (needsKeyboardNotice(browserMediaQuery())) {
+const usesTouch = needsKeyboardNotice(browserMediaQuery())
+if (usesTouch) {
   touch.show()
   // 키보드 힌트는 치운다. 조작판 위에 겹쳐 뜨는 데다, 있지도 않은 키를
   // 알려 주는 꼴이 된다.
@@ -182,6 +183,8 @@ const playtest = new Playtest(host, {
 })
 // 지난 방문의 난이도와 저장된 세션이 다를 수 있다. 다르면 세션을 새로 연다.
 playtest.setDifficulty(difficulty)
+// 60fps 항목은 노트북 기준이다. 어느 쪽에서 잰 프레임인지 적어 둔다.
+playtest.setTouch(usesTouch)
 
 const pauseMenu = new PauseMenu(host, {
   onResume: () => { pauseState = togglePause(pauseState) },

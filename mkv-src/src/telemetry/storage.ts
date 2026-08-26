@@ -69,6 +69,7 @@ export function parseSession(value: unknown): Session {
   return {
     version: SESSION_VERSION,
     difficulty: parseDifficulty(value['difficulty']),
+    touch: value['touch'] === true,
     id: typeof value['id'] === 'string' ? value['id'] : '',
     playMs: num(value['playMs']),
     deaths: parseDeaths(value['deaths']),

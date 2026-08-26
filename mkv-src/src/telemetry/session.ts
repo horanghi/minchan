@@ -26,8 +26,10 @@ import { EMPTY_FRAMES, type FrameStats } from './frames.ts'
  *   없어 "첫 클리어 몇 회"를 읽을 수 없다.
  * - v3 → v4: 꾸러미에 빌드 식별자가 생겼다. v3 기록은 어느 빌드에서 잰
  *   것인지 알 수 없다 — 배포 경로가 둘이 되면서 갈릴 수 있게 됐다.
+ * - v4 → v5: 화면 조작판으로 했는지를 기록한다. 폰에서도 할 수 있게 되면서
+ *   60fps 항목("중급 노트북에서")에 폰 프레임이 섞일 수 있게 됐다.
  */
-export const SESSION_VERSION = 4
+export const SESSION_VERSION = 5
 
 /**
  * 조작이 돌아온 뒤 이 시간 안에 입력이 들어오면 "즉시 재시도"로 본다.
@@ -74,6 +76,14 @@ export interface Session {
    */
   readonly difficulty: Difficulty
   /**
+   * 화면 조작판으로 했는가.
+   *
+   * 게이트의 60fps 항목은 **중급 노트북에서** 재기로 정의돼 있다. 폰 프레임을
+   * 같은 평균에 넣으면 그 숫자는 노트북의 것도 폰의 것도 아니게 된다.
+   * 난이도·버전·빌드와 같은 이유로, 조건이 다르면 갈라 놓아야 한다.
+   */
+  readonly touch: boolean
+  /**
    * 이 세션의 짧은 식별자.
    *
    * 테스터 여러 명의 결과를 합칠 때 같은 사람이 두 번 붙여넣은 것을 걸러낸다.
@@ -97,6 +107,7 @@ export interface Session {
 export const NEW_SESSION: Session = Object.freeze({
   version: SESSION_VERSION,
   difficulty: DEFAULT_DIFFICULTY,
+  touch: false,
   id: '',
   playMs: 0,
   deaths: Object.freeze([]) as readonly DeathRecord[],
@@ -135,7 +146,12 @@ export function withDifficulty(
   id: string,
 ): Session {
   if (session.difficulty === difficulty) return session
-  return { ...NEW_SESSION, difficulty, id }
+  return { ...NEW_SESSION, difficulty, touch: session.touch, id }
+}
+
+/** 이 기기가 화면 조작판을 쓰는가. 세션이 시작될 때 한 번 정한다. */
+export function withTouch(session: Session, touch: boolean): Session {
+  return session.touch === touch ? session : { ...session, touch }
 }
 
 /** 아직 식별자가 없으면 붙인다. 한 번 붙으면 바뀌지 않는다. */

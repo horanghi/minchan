@@ -19,6 +19,8 @@ export interface Payload {
   readonly diff: string
   /** 잰 빌드. 밸런스를 만지면 그 전후는 다른 게임이다. */
   readonly build: string
+  /** 화면 조작판으로 했는가. 60fps 항목은 노트북 기준이다. */
+  readonly touch: boolean
   readonly playMin: number
   readonly deaths: number
   /** 판정이 끝난 사망만 분모에 넣은 즉시 재시도율 */
@@ -58,6 +60,7 @@ export function toPayload(session: Session, loadBytes: number | null): Payload {
     v: session.version,
     diff: session.difficulty,
     build: buildId(),
+    touch: session.touch,
     playMin: round(session.playMs / 60000, 1),
     deaths: session.deaths.length,
     retryRate: judged === 0 ? null : round(retryRate(session), 3),

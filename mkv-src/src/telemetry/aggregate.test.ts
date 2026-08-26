@@ -6,7 +6,7 @@ import type { Payload } from './payload.ts'
 
 function tester(patch: Partial<Payload> & { id: string }): Payload {
   return {
-    v: 4, diff: GATE_DIFFICULTY, build: 'aaaaaaaa', playMin: 10, deaths: 10, retryRate: 1, attempts: 11, cleared: true,
+    v: 5, diff: GATE_DIFFICULTY, build: 'aaaaaaaa', touch: false, playMin: 10, deaths: 10, retryRate: 1, attempts: 11, cleared: true,
     bossReached: true, hurts: 20, armorBreaks: 6,
     fps: { held: 1, p95: 17, avg: 60, samples: 20000, worst: 30 },
     loadKB: 620, worstRespawnMs: 1750,
@@ -264,22 +264,22 @@ describe('난이도가 섞인 결과', () => {
 
 describe('낡은 형식', () => {
   it('버전이 다른 꾸러미는 뺀다 — 같은 자리에 다른 뜻의 숫자가 있다', () => {
-    const agg = aggregate([...passingFive(), tester({ id: 'old', v: 3, retryRate: 0.2, deaths: 50 })])
+    const agg = aggregate([...passingFive(), tester({ id: 'old', v: 4, retryRate: 0.2, deaths: 50 })])
     expect(agg.testers).toBe(5)
     expect(agg.staleDropped).toBe(1)
-    expect(agg.stale).toEqual([[3, 1]])
+    expect(agg.stale).toEqual([[4, 1]])
   })
 
   it('여러 버전이 섞이면 많은 순으로 적는다', () => {
     const agg = aggregate([
       ...passingFive(),
-      tester({ id: 'o1', v: 3 }), tester({ id: 'o2', v: 1 }), tester({ id: 'o3', v: 3 }),
+      tester({ id: 'o1', v: 4 }), tester({ id: 'o2', v: 1 }), tester({ id: 'o3', v: 4 }),
     ])
-    expect(agg.stale).toEqual([[3, 2], [1, 1]])
+    expect(agg.stale).toEqual([[4, 2], [1, 1]])
   })
 
   it('낡은 꾸러미의 숫자는 어느 집계에도 안 들어간다', () => {
-    const mixed = aggregate([...passingFive(), tester({ id: 'old', v: 3, retryRate: 0, deaths: 500 })])
+    const mixed = aggregate([...passingFive(), tester({ id: 'old', v: 4, retryRate: 0, deaths: 500 })])
     const clean = aggregate(passingFive())
     expect(mixed.retryRate).toBe(clean.retryRate)
     expect(mixed.totalDeaths).toBe(clean.totalDeaths)
@@ -288,7 +288,7 @@ describe('낡은 형식', () => {
   it('낡은 것으로 인원을 채워도 표본부족이다', () => {
     const agg = aggregate([
       ...Array.from({ length: 4 }, (_, i) => tester({ id: `t${i}` })),
-      tester({ id: 'old', v: 3 }),
+      tester({ id: 'old', v: 4 }),
     ])
     expect(overall(gateVerdict(agg))).toBe('unknown')
   })
@@ -327,5 +327,32 @@ describe('빌드가 섞였을 때', () => {
   it('빌드가 비어 있으면 개발 빌드로 적는다', () => {
     const agg = aggregate([...passingFive(), tester({ id: 'x', build: '' })])
     expect(agg.builds).toContainEqual(['dev', 1])
+  })
+})
+
+describe('화면 조작판 표본', () => {
+  it('60fps 는 노트북 표본에서만 잰다 — 정의가 "중급 노트북에서" 다', () => {
+    const withPhone = aggregate([
+      ...passingFive(),
+      tester({ id: 'phone', touch: true, fps: { held: 0.2, p95: 60, avg: 30, samples: 500000, worst: 200 } }),
+    ])
+    const laptopsOnly = aggregate(passingFive())
+
+    // 폰이 프레임을 압도적으로 많이 냈어도 판정이 흔들리면 안 된다.
+    expect(withPhone.heldRate).toBe(laptopsOnly.heldRate)
+    expect(withPhone.totalFrames).toBe(laptopsOnly.totalFrames)
+    expect(withPhone.touchTesters).toBe(1)
+  })
+
+  it('폰 표본도 나머지 항목에는 들어간다 — 재시도율은 기기 문제가 아니다', () => {
+    const agg = aggregate([...passingFive(), tester({ id: 'phone', touch: true, deaths: 20 })])
+    expect(agg.testers).toBe(6)
+    expect(agg.totalDeaths).toBe(70)
+  })
+
+  it('전부 폰이면 60fps 를 판정하지 않는다', () => {
+    const agg = aggregate(passingFive().map((p) => ({ ...p, touch: true })))
+    expect(agg.heldRate).toBeNull()
+    expect(gateVerdict(agg).find((l) => l.key === 'fps')?.verdict).toBe('unknown')
   })
 })
