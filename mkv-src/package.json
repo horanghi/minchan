@@ -1,0 +1,37 @@
+{
+  "name": "grimhollow",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "마령촌 (GRIMHOLLOW) — browser hardcore 2D action platformer",
+  "license": "MIT",
+  "author": "GyumanCho",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/horanghi/mkv.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/check-size.mjs",
+    "preview": "vite preview",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "deploy": "vercel deploy --prod",
+    "size": "node scripts/check-size.mjs",
+    "gate": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/gate-report.mjs",
+    "unused": "node scripts/unused-exports.mjs"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "pixi.js": "^8.20.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}
