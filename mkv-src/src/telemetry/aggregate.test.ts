@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   GATE_DIFFICULTY, MIN_TESTERS, aggregate, gateVerdict, overall, type Aggregate,
 } from './aggregate.ts'
+import { SESSION_VERSION } from './session.ts'
 import type { Payload } from './payload.ts'
 
 function tester(patch: Partial<Payload> & { id: string }): Payload {
   return {
-    v: 5, diff: GATE_DIFFICULTY, build: 'aaaaaaaa', touch: false, playMin: 10, deaths: 10, retryRate: 1, attempts: 11, cleared: true,
+    // 상수를 그대로 쓴다. 숫자를 박아 두면 SESSION_VERSION 이 오를 때마다
+    // "낡은 기록은 뺀다" 규칙에 걸려 이 파일 전체가 0 을 세게 된다.
+    v: SESSION_VERSION, diff: GATE_DIFFICULTY, build: 'aaaaaaaa', touch: false, playMin: 10, deaths: 10, retryRate: 1, attempts: 11, cleared: true,
     bossReached: true, hurts: 20, armorBreaks: 6,
     fps: { held: 1, p95: 17, avg: 60, samples: 20000, worst: 30 },
     loadKB: 620, worstRespawnMs: 1750,
