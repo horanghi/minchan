@@ -1,8 +1,8 @@
 {
   "$source": "docs/05-enemies-bosses.md 5.2",
   "enemies": [
-    { "id": "ghoul",     "name": "좀비",     "hp": 20, "stages": ["S1"] },
-    { "id": "grimm",     "name": "그림",     "hp": 30, "stages": ["S1"], "speed": 90, "aggroRadius": 120, "landedStunFrames": 180 },
+    { "id": "ghoul",     "name": "좀비",     "hp": 20, "stages": ["S1", "S2", "S3", "S4", "S5", "S6"] },
+    { "id": "grimm",     "name": "그림",     "hp": 30, "stages": ["S1", "S2", "S3", "S4", "S5", "S6"], "speed": 90, "aggroRadius": 120, "landedStunFrames": 180 },
     { "id": "corvid",    "name": "까마귀",   "hp": 12, "stages": ["S1", "S5"] },
     { "id": "ember",     "name": "화염귀",   "hp": 24, "stages": ["S2"] },
     { "id": "pyre",      "name": "소각인",   "hp": 45, "stages": ["S2"] },

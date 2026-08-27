@@ -11,7 +11,11 @@ import { overlaps, type Aabb } from '../../physics/aabb.ts'
  * 뭉쳐 굳고, 플레이어는 왜 안 오는지 알 수 없다. → docs/10-tech-spec.md 10.4
  */
 
-export const ENEMY_KINDS = ['ghoul', 'grimm', 'corvid', 'levin'] as const
+export const ENEMY_KINDS = [
+  'ghoul', 'grimm', 'corvid', 'levin',
+  // 스테이지 전용 잡몹. 어느 스테이지에 나오는지는 docs/05 5.2 등장 열이 정한다.
+  'ember', 'pyre', 'frostfang', 'ringer', 'bogman', 'spore', 'gaoler', 'wisp',
+] as const
 export type EnemyKind = (typeof ENEMY_KINDS)[number]
 
 export interface Enemy {
@@ -48,6 +52,27 @@ export const ENEMY_SPECS: Readonly<Record<EnemyKind, EnemySpec>> = {
   corvid: { kind: 'corvid', hp: 12, width: 12, height: 10, contactDamage: true },
   // 구름 자체는 닿아도 아프지 않다 — 위협은 전부 예고된 번개 기둥이다.
   levin: { kind: 'levin', hp: 16, width: 14, height: 10, contactDamage: false },
+
+  // S2 불타는 마령촌 — 불은 거리로 나뉜다. 화염귀가 먼 거리, 소각인이 가까운 거리.
+  ember: { kind: 'ember', hp: 24, width: 12, height: 20, contactDamage: true },
+  pyre: { kind: 'pyre', hp: 45, width: 14, height: 24, contactDamage: true },
+
+  // S3 얼어붙은 종루 — 서리늑대가 속도를, 종지기가 그 속도를 더 키운다.
+  frostfang: { kind: 'frostfang', hp: 28, width: 18, height: 14, contactDamage: true },
+  ringer: { kind: 'ringer', hp: 35, width: 12, height: 22, contactDamage: true },
+
+  // S4 속삭이는 늪 — 늪지기는 숨어 있고, 포자충은 죽어서 자리를 막는다.
+  bogman: { kind: 'bogman', hp: 40, width: 14, height: 20, contactDamage: true },
+  /**
+   * 포자충은 작지만 **투사체 높이에는 닿아야 한다.**
+   * 10px 로 두면 랜슬이 머리 위로 지나가 HP 8 짜리가 사실상 무적이 된다 —
+   * 약한 적이 못 잡는 적이 되는 것은 약함이 아니라 고장이다.
+   */
+  spore: { kind: 'spore', hp: 8, width: 12, height: 16, contactDamage: true },
+
+  // S5 눈먼 갱도 — 간수는 리치로, 번개령은 타이밍으로 압박한다.
+  gaoler: { kind: 'gaoler', hp: 55, width: 14, height: 24, contactDamage: true },
+  wisp: { kind: 'wisp', hp: 16, width: 10, height: 12, contactDamage: true },
 }
 
 /** 피격 플래시 2프레임. → docs/06 6.5 */

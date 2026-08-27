@@ -157,6 +157,8 @@ export function causeBreakdown(session: Session): readonly (readonly [string, nu
 
 export const CAUSE_LABELS: Readonly<Record<DamageCause | 'unknown', string>> = {
   ghoul: '좀비', grimm: '그림', corvid: '까마귀', levin: '낙뢰',
+  ember: '화염귀', pyre: '소각인', frostfang: '서리늑대', ringer: '종지기',
+  bogman: '늪지기', spore: '포자충', gaoler: '간수', wisp: '번개령',
   cairn: '캐른', pit: '낙사', hazard: '불·독', timeout: '시간 초과', unknown: '불명',
 }
 

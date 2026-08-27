@@ -1,9 +1,35 @@
 import { describe, expect, it } from 'vitest'
-import { ENEMY_SPECS, ENEMY_KINDS } from '../entities/enemies/enemy.ts'
+import { ENEMY_SPECS, ENEMY_KINDS, type EnemyKind } from '../entities/enemies/enemy.ts'
 import { S1_PALETTE } from '../scenery/stage1.ts'
 import { ENEMY_SPRITES, PAL_CORVID, PAL_GHOUL, PAL_GRIMM, PAL_LEVIN, enemyFrame } from './enemies.ts'
 import { heightOf, widthOf } from './matrix.ts'
 import { missingIndices } from './palette.ts'
+
+/**
+ * 전용 도트가 반드시 있어야 하는 상태.
+ *
+ * 각 AI 모듈(`entities/enemies/*.ts`)의 상태 이름과 같은 문자열이어야 한다 —
+ * 오타 하나면 그 상태는 조용히 `default` 로 떨어지고, 예고가 화면에서 사라진다.
+ * → docs/05-enemies-bosses.md 5.1 원칙 2
+ */
+const TELEGRAPH_CLIPS: Readonly<Partial<Record<EnemyKind, readonly string[]>>> = {
+  ghoul: ['spawn'],
+  grimm: ['dormant'],
+  corvid: ['windup'],
+  levin: ['windup', 'strike'],
+  ember: ['windup', 'fire'],
+  pyre: ['windup', 'breathe', 'cooldown'],
+  frostfang: ['windup', 'lunge', 'recover'],
+  ringer: ['windup', 'ring'],
+  bogman: ['submerged', 'surface'],
+  gaoler: ['windup', 'whip'],
+  wisp: ['ghost'],
+}
+
+/** 칠해진 픽셀 수. 얼마나 나왔는지를 재는 유일한 척도다. */
+function paintedOf(matrix: readonly string[]): number {
+  return matrix.join('').split('').filter((ch) => ch !== '.').length
+}
 
 describe('잡몹 도트', () => {
   it('모든 잡몹 종류에 스프라이트가 있다', () => {
@@ -52,6 +78,56 @@ describe('잡몹 도트', () => {
         }
       }
     }
+  })
+
+  it('예고·공격 상태에 전용 도트가 있다 — 없으면 걷기 사이클로 그려진다', () => {
+    // 클립이 없는 상태는 `default` 로 떨어진다. 예고 프레임을 30 으로 잡아 두고
+    // 그 30프레임을 제자리 걷기로 그리면, 예고는 코드에만 있고 화면에는 없다.
+    for (const kind of ENEMY_KINDS) {
+      const states = TELEGRAPH_CLIPS[kind]
+      if (states === undefined) continue
+      const clips = ENEMY_SPRITES[kind].clips
+      for (const state of states) {
+        expect([kind, state, clips[state] !== undefined]).toEqual([kind, state, true])
+      }
+    }
+  })
+
+  it('상태 도트가 기본 도트와 다르다 — 같은 그림이면 상태가 없는 것과 같다', () => {
+    for (const kind of ENEMY_KINDS) {
+      const states = TELEGRAPH_CLIPS[kind]
+      if (states === undefined) continue
+      const sprite = ENEMY_SPRITES[kind]
+      const base = sprite.clips['default'] ?? []
+      for (const state of states) {
+        for (const frame of sprite.clips[state] ?? []) {
+          const same = base.filter((other) => other.join('') === frame.join(''))
+          expect([kind, state, same]).toEqual([kind, state, []])
+        }
+      }
+    }
+  })
+
+  it('소각인의 예고와 재충전이 다른 그림이다 — 뜻이 정반대인 두 상태다', () => {
+    // 30프레임 예고(곧 화염)와 60프레임 재충전(붙어도 안전)이 같은 그림이면
+    // 가장 긴 상태가 통째로 오독되어, 유일한 반격 창을 버리게 된다.
+    const pyre = ENEMY_SPRITES['pyre']
+    expect(pyre.clips['windup']?.[0]).not.toEqual(pyre.clips['cooldown']?.[0])
+    expect(pyre.clips['windup']?.[0]).not.toEqual(pyre.clips['breathe']?.[0])
+  })
+
+  it('솟는 늪지기가 잠복과 전신의 중간이다 — 반쯤 솟아야 예고로 읽힌다', () => {
+    // 이 적의 공정성 논거 전체가 "솟아오르는 예고"다. 완전히 솟은 그림으로
+    // 그리면 예고 20프레임이 "이미 도약 중"으로 읽혀 물러설 근거가 사라진다.
+    const bogman = ENEMY_SPRITES['bogman']
+    const submerged = paintedOf(bogman.clips['submerged']?.[0] ?? [])
+    const surface = paintedOf(bogman.clips['surface']?.[0] ?? [])
+    const full = paintedOf(bogman.clips['default']?.[0] ?? [])
+
+    expect(submerged).toBeLessThan(surface)
+    expect(surface).toBeLessThan(full)
+    // 맨 윗줄은 비어 있다 — 아직 다 안 나왔다
+    expect(bogman.clips['surface']?.[0]?.[0]).toBe('.'.repeat(bogman.width))
   })
 
   it('걷기 두 프레임이 서로 다르다 — 같으면 애니메이션이 없는 것이다', () => {

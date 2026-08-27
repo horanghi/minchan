@@ -125,18 +125,22 @@ export const STAGE_2: Stage = {
   ],
 
   enemies: [
+    // 불의 스테이지는 **거리로 나뉜다** — 화염귀가 먼 거리를, 소각인이 붙은 거리를 맡는다.
+    // 좀비·그림은 전 스테이지 공통(docs/05 5.2 "S1~"). 까마귀는 S1·S5 전용이라 뺐다.
     { kind: 'ghoul', tx: 6, ty: 15, facing: -1 },
-    { kind: 'ghoul', tx: 20, ty: 15, facing: -1 },
+    { kind: 'ember', tx: 20, ty: 15, state: 'idle' },
     { kind: 'grimm', tx: 22, ty: 9, state: 'dormant' },
-    { kind: 'corvid', tx: 31, ty: 8, state: 'perch' },
+    // 까마귀가 있던 31 은 착지 지점 코앞이다. 공중 적은 면제였지만 지상 적은
+    // 착지 순간을 회피할 수 없게 만든다 — 그래서 한 칸 더 뒤로 뺐다.
+    { kind: 'pyre', tx: 33, ty: 15, state: 'walk', facing: -1 },
     { kind: 'ghoul', tx: 35, ty: 15, facing: -1 },
-    { kind: 'ghoul', tx: 50, ty: 15, facing: -1 },
+    { kind: 'ember', tx: 50, ty: 15, state: 'idle' },
 
     { kind: 'ghoul', tx: A_WIDTH + 5, ty: 15, facing: -1 },
     { kind: 'grimm', tx: A_WIDTH + 18, ty: 9, state: 'dormant' },
-    { kind: 'ghoul', tx: A_WIDTH + 30, ty: 15, facing: -1 },
-    { kind: 'ghoul', tx: A_WIDTH + 33, ty: 15, facing: -1 },
-    { kind: 'corvid', tx: A_WIDTH + 46, ty: 8, state: 'perch' },
+    { kind: 'ember', tx: A_WIDTH + 30, ty: 15, state: 'idle' },
+    { kind: 'pyre', tx: A_WIDTH + 33, ty: 15, state: 'walk', facing: -1 },
+    { kind: 'ember', tx: A_WIDTH + 46, ty: 15, state: 'idle' },
     { kind: 'ghoul', tx: A_WIDTH + 56, ty: 15, facing: -1 },
   ],
 
