@@ -158,18 +158,22 @@ function spawn(type, side, m){
   const T = TYPES[type];
   m = m || {hp:1,dmg:1,size:1};
   // 레인은 앞뒤 층이다. 겹쳐서 싸우므로 층이 많을수록 무리로 읽힌다.
-  // 광부는 가운데(2)에 세워 전투 대열과 섞이지 않게 한다.
-  const lane = type==='miner' ? 2 : Math.floor(Math.random()*5);
+  // 7층 × 5px = 위아래 30px. 층을 늘리는 대신 간격을 좁혀, 평지에서
+  // 떠 있는 것처럼 보이지 않게 한다.
+  // 광부는 가운데(3)에 세워 전투 대열과 섞이지 않게 한다.
+  const lane = type==='miner' ? 3 : Math.floor(Math.random()*7);
   G.units.push({
     id:++uid, type, side, T,
     x: type==='miner' ? BASE_A-24 : (side==='a' ? BASE_A+22 : BASE_B-22),
     hp: T.hp*m.hp, max: T.hp*m.hp,
     dmg: T.dmg*m.dmg, size: T.size*(m.size||1),
     cd:.3, ph:Math.random()*6, sw:0, dead:0, hurt:0,
-    lane: lane, yo: (lane-2)*7,
+    lane: lane, yo: (lane-3)*5,
     // 붙는 거리를 조금씩 달리한다. 전부 같은 지점에 서면 여럿이 겹쳐도
     // 한 사람처럼 보인다 — 이만큼 더 파고들어야 때린다.
-    spread: Math.random()*Math.min(20, T.rng*.6),
+    // 사거리의 75%를 넘지 않게 잡는다. 넘기면 원거리 유닛이 적에게
+    // 걸어 들어가 근접 유닛이 되어 버린다.
+    spread: Math.random()*Math.min(30, T.rng*.75),
     bounty: side==='b' ? Math.round(T.gain*(.7+(m.hp||1)*.55)) : 0,
     job:'toMine', jobT:0, carry:0
   });
