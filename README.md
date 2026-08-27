@@ -10,6 +10,7 @@
 
 | 폴더 | 게임 |
 |---|---|
+| [`minchan_6/`](minchan_6/) | 스틱맨 전투 디펜스 |
 | [`mkv/`](mkv/) | 마령촌 — 2D 액션. **키보드 전용** |
 | [`minchan_rpg/`](minchan_rpg/) | Block RPG — 3D, 온라인 8인 |
 | [`minchan_5/`](minchan_5/) | 동물 길건너 리메이크 |
