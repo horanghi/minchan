@@ -120,19 +120,21 @@ export const STAGE_3: Stage = {
   ],
 
   enemies: [
+    // 얼음의 스테이지는 **속도로 나뉜다** — 서리늑대가 속도를 만들고,
+    // 종지기가 그 속도를 키운다. 종지기를 먼저 잡을 것인가가 매 구간의 질문이다.
     { kind: 'ghoul', tx: 6, ty: 15, facing: -1 },
-    { kind: 'ghoul', tx: 22, ty: 15, facing: -1 },
-    { kind: 'corvid', tx: 25, ty: 8, state: 'perch' },
+    { kind: 'frostfang', tx: 22, ty: 15, state: 'prowl', facing: -1 },
+    { kind: 'ringer', tx: 25, ty: 15, state: 'idle' },
     { kind: 'ghoul', tx: 34, ty: 15, facing: -1 },
     { kind: 'grimm', tx: 38, ty: 9, state: 'dormant' },
-    { kind: 'ghoul', tx: 50, ty: 15, facing: -1 },
+    { kind: 'frostfang', tx: 50, ty: 15, state: 'prowl', facing: -1 },
 
     { kind: 'ghoul', tx: A_WIDTH + 5, ty: 15, facing: -1 },
-    { kind: 'ghoul', tx: A_WIDTH + 16, ty: 15, facing: -1 },
+    { kind: 'frostfang', tx: A_WIDTH + 16, ty: 15, state: 'prowl', facing: -1 },
     { kind: 'ghoul', tx: A_WIDTH + 26, ty: 15, facing: -1 },
     { kind: 'grimm', tx: A_WIDTH + 34, ty: 9, state: 'dormant' },
-    { kind: 'ghoul', tx: A_WIDTH + 43, ty: 15, facing: -1 },
-    { kind: 'corvid', tx: A_WIDTH + 45, ty: 8, state: 'perch' },
+    { kind: 'ringer', tx: A_WIDTH + 43, ty: 15, state: 'idle' },
+    { kind: 'frostfang', tx: A_WIDTH + 45, ty: 15, state: 'prowl', facing: -1 },
     { kind: 'ghoul', tx: A_WIDTH + 55, ty: 15, facing: -1 },
   ],
 

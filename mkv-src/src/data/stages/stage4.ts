@@ -120,20 +120,31 @@ export const STAGE_4: Stage = {
   ],
 
   enemies: [
+    // 늪의 스테이지는 **보이지 않는 것으로 나뉜다** — 늪지기는 숨어 있다가 나오고,
+    // 포자충은 죽어서 자리를 막는다. 여기서는 다 죽이는 것이 최선이 아니다.
+    // **늪지기 옆에 다른 적을 두지 않는다.** 잠복한 적과 걸어오는 적이 겹치면
+    // 무엇에 죽었는지 알 수 없고, 그러면 다음 시도에서 고칠 것을 못 배운다.
+    // → docs/04 4.2 원칙 2 "죽음은 한 번에 하나만 가르친다"
+    // 지상 적은 **긴 solid 구간의 가운데**에 둔다. 독물 바로 뒤에 두면
+    // 건너뛰는 도중에 이미 사정권이라, 뛰던 사람이 멈춰 서서 빠진다.
     { kind: 'ghoul', tx: 5, ty: 15, facing: -1 },
-    { kind: 'grimm', tx: 23, ty: 9, state: 'dormant' },
-    { kind: 'ghoul', tx: 30, ty: 15, facing: -1 },
-    { kind: 'corvid', tx: 38, ty: 8, state: 'perch' },
-    { kind: 'ghoul', tx: 40, ty: 15, facing: -1 },
+    // 공중 적도 **독물 위에 두지 않는다.** 건너야 할 자리에서 싸우게 되면
+    // 멈춰 선 사람은 건너지 못하고, 건너는 사람은 싸우지 못한다.
+    { kind: 'grimm', tx: 22, ty: 9, state: 'dormant' },
+    { kind: 'spore', tx: 29, ty: 15, state: 'walk', facing: -1 },
+    { kind: 'bogman', tx: 39, ty: 15, state: 'submerged' },
     { kind: 'grimm', tx: 50, ty: 10, state: 'dormant' },
-    { kind: 'ghoul', tx: 52, ty: 15, facing: -1 },
+    { kind: 'ghoul', tx: 53, ty: 15, facing: -1 },
+    { kind: 'spore', tx: 57, ty: 15, state: 'walk', facing: -1 },
 
     { kind: 'ghoul', tx: A_WIDTH + 5, ty: 15, facing: -1 },
-    { kind: 'corvid', tx: A_WIDTH + 20, ty: 8, state: 'perch' },
-    { kind: 'ghoul', tx: A_WIDTH + 34, ty: 15, facing: -1 },
-    { kind: 'grimm', tx: A_WIDTH + 36, ty: 9, state: 'dormant' },
-    { kind: 'ghoul', tx: A_WIDTH + 44, ty: 15, facing: -1 },
-    { kind: 'ghoul', tx: A_WIDTH + 55, ty: 15, facing: -1 },
+    // 늪의 위협은 늪지기와 포자충이 맡는다. 그림까지 세 마리를 얹으면
+    // 스테이지의 성격이 다시 "그림이 무서운 판"으로 돌아간다 — S4 는 두 마리로 족하다.
+    { kind: 'ghoul', tx: A_WIDTH + 20, ty: 15, facing: -1 },
+    { kind: 'spore', tx: A_WIDTH + 33, ty: 15, state: 'walk', facing: -1 },
+    { kind: 'bogman', tx: A_WIDTH + 42, ty: 15, state: 'submerged' },
+    { kind: 'ghoul', tx: A_WIDTH + 52, ty: 15, facing: -1 },
+    { kind: 'ghoul', tx: A_WIDTH + 56, ty: 15, facing: -1 },
   ],
 
   sections: [SECTION_START.a, SECTION_START.b, SECTION_START.boss],

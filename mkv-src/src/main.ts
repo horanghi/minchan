@@ -16,7 +16,7 @@ import { FIRST_STAGE, STAGES, nextStage, stageNumber } from './data/stages/stage
 import { frameFor } from './entities/player/animation.ts'
 import { emitsLight, isBlinking, isInvulnerable, pickUpRelic, spriteStateOf, takeHit } from './entities/player/vitals.ts'
 import { bodyBox, coreBox, isCoreExposed } from './entities/bosses/cairn.ts'
-import { boxOfHazard } from './entities/bosses/hazard.ts'
+import { boxOfHazard, type HazardKind } from './entities/bosses/hazard.ts'
 import { boxOfChest, boxOfItem } from './entities/pickups/chest.ts'
 import { boxOfEnemy } from './entities/enemies/enemy.ts'
 import { NO_ABERRATION, pixelOffset, step as stepAberration, trigger as triggerAberration } from './fx/aberration.ts'
@@ -767,7 +767,43 @@ function drawBoss(): void {
 }
 
 /**
- * 보스가 던진 묘비와 낙석.
+ * 위험물의 색. **종류마다 다르다** — 색이 곧 정체이고, 정체를 알아야 대처가 갈린다.
+ *
+ * 묘비는 뛰어넘고 낙석은 비켜서지만 독 구름은 그냥 지나가면 안 된다.
+ * 넷을 한 색으로 칠하면 그 판단이 전부 사라진다.
+ * → entities/bosses/hazard.ts · docs/05 5.4 · docs/04 STAGE 2·4
+ */
+const HAZARD_COLORS: Readonly<Record<HazardKind, number>> = {
+  gravestone: 0xa99c8a,
+  rock: 0x8e97a8,
+  /** 불덩이 — 화염귀의 불. 소각인의 화염과 같은 계열이라 하나로 읽힌다. */
+  fireball: 0xe8622a,
+  /** 독 구름 — 붉은 계열의 위험물 사이에서 유일하게 보라다. */
+  poison: 0x9b5fbf,
+}
+
+/**
+ * 불투명도. 독 구름만 반투명이다.
+ *
+ * 구름은 자리를 막되 **뒤가 보여야** 한다. 불투명하게 칠하면 24×16 판때기가 되어
+ * 그 뒤의 발판과 적이 지워지고, 걷힐 때까지 화면 한 조각이 사라진 것과 같아진다.
+ */
+const HAZARD_ALPHA: Readonly<Record<HazardKind, number>> = {
+  gravestone: 1, rock: 1, fireball: 1, poison: 0.45,
+}
+
+/**
+ * 윗면 하이라이트 색. null 이면 그리지 않는다.
+ *
+ * 하이라이트는 **덩어리**의 신호다 — 빛을 받는 단단한 윗면이 있어야 성립한다.
+ * 불덩이와 독 구름에는 그런 면이 없고, 얹으면 오히려 굴러오는 돌로 오독된다.
+ */
+const HAZARD_TOP_LIGHT: Readonly<Record<HazardKind, number | null>> = {
+  gravestone: 0xd8d2bc, rock: 0xd8d2bc, fireball: null, poison: null,
+}
+
+/**
+ * 위험물 — 보스가 던진 묘비·낙석과 스테이지 적이 내보내는 불덩이·독 구름.
  *
  * 밝게 그린다. 플레이어를 때리는 것은 배경보다 밝아야 읽힌다 —
  * 잡몹 대비 규칙과 같다. → prompts/m1-gate.md 진단표
@@ -776,10 +812,12 @@ function drawHazards(): void {
   const g = hazardGfx.clear()
   for (const hazard of world.hazards.hazards) {
     const box = boxOfHazard(hazard)
-    const color = hazard.kind === 'rock' ? 0x8e97a8 : 0xa99c8a
-    g.rect(Math.round(box.x), Math.round(box.y), box.width, box.height).fill(color)
+    g.rect(Math.round(box.x), Math.round(box.y), box.width, box.height)
+      .fill({ color: HAZARD_COLORS[hazard.kind], alpha: HAZARD_ALPHA[hazard.kind] })
+
     // 윗면을 밝혀 굴러오는 덩어리로 읽히게 한다
-    g.rect(Math.round(box.x), Math.round(box.y), box.width, 2).fill(0xd8d2bc)
+    const top = HAZARD_TOP_LIGHT[hazard.kind]
+    if (top !== null) g.rect(Math.round(box.x), Math.round(box.y), box.width, 2).fill(top)
   }
 }
 

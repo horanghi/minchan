@@ -121,22 +121,25 @@ export const STAGE_5: Stage = {
   ],
 
   enemies: [
+    // 갱도는 **타이밍으로 나뉜다.** 간수는 긴 리치로 거리를 재게 만들고,
+    // 번개령은 낙뢰가 칠 때만 실체가 된다 — 번개가 곧 공격 창이다.
+    // 낙뢰 옆에 번개령을 붙여 둔 이유가 그것이다 (AT-1 → AT-2).
     { kind: 'ghoul', tx: 6, ty: 15, facing: -1 },
-    { kind: 'ghoul', tx: 18, ty: 15, facing: -1 },
+    { kind: 'gaoler', tx: 18, ty: 15, state: 'patrol', facing: -1 },
     { kind: 'grimm', tx: 20, ty: 8, state: 'dormant' },
     { kind: 'corvid', tx: 28, ty: 7, state: 'perch' },
     // 낙뢰 — 붕괴 다리 앞 상공. "멈추지 마라"를 번개로 한 번 더 말한다 (AT-1).
     { kind: 'levin', tx: 20, ty: 11, state: 'drift' },
-    { kind: 'ghoul', tx: 30, ty: 15, facing: -1 },
+    { kind: 'wisp', tx: 24, ty: 12, state: 'ghost' },
     { kind: 'ghoul', tx: 40, ty: 15, facing: -1 },
     { kind: 'ghoul', tx: 52, ty: 15, facing: -1 },
 
     { kind: 'ghoul', tx: A_WIDTH + 5, ty: 15, facing: -1 },
-    { kind: 'ghoul', tx: A_WIDTH + 15, ty: 15, facing: -1 },
+    { kind: 'gaoler', tx: A_WIDTH + 15, ty: 15, state: 'patrol', facing: -1 },
     { kind: 'ghoul', tx: A_WIDTH + 24, ty: 15, facing: -1 },
     { kind: 'grimm', tx: A_WIDTH + 31, ty: 8, state: 'dormant' },
     { kind: 'levin', tx: A_WIDTH + 28, ty: 11, state: 'drift' },
-    { kind: 'ghoul', tx: A_WIDTH + 33, ty: 15, facing: -1 },
+    { kind: 'wisp', tx: A_WIDTH + 32, ty: 12, state: 'ghost' },
     { kind: 'corvid', tx: A_WIDTH + 42, ty: 7, state: 'perch' },
     { kind: 'ghoul', tx: A_WIDTH + 44, ty: 15, facing: -1 },
     { kind: 'ghoul', tx: A_WIDTH + 55, ty: 15, facing: -1 },

@@ -13,7 +13,7 @@ import { TILE, mapBounds, tileAt, type Tilemap } from '../../physics/tilemap.ts'
  * → docs/05 5.4 캐른 · docs/04 STAGE 1
  */
 
-export const HAZARD_KINDS = ['gravestone', 'rock'] as const
+export const HAZARD_KINDS = ['gravestone', 'rock', 'fireball', 'poison'] as const
 export type HazardKind = (typeof HAZARD_KINDS)[number]
 
 export interface Hazard {
@@ -42,6 +42,29 @@ export const EMPTY_HAZARDS: HazardWorld = Object.freeze({
 const SIZES: Readonly<Record<HazardKind, { readonly width: number; readonly height: number }>> = {
   gravestone: { width: 10, height: 12 },
   rock: { width: 10, height: 10 },
+  fireball: { width: 8, height: 8 },
+  poison: { width: 24, height: 16 },
+}
+
+/**
+ * 중력 배율. 독 구름만 0 이다 — 떠 있어야 자리를 막는 지형이 된다.
+ * 떨어지는 독은 지나가면 그만이라 "죽어서 길을 막는다"는 포자충의 역할이 사라진다.
+ */
+const GRAVITY_SCALE: Readonly<Record<HazardKind, number>> = {
+  gravestone: 1, rock: 1, fireball: 1, poison: 0,
+}
+
+/**
+ * 수명 프레임. 0 이면 무한 — 지형이나 화면 밖이 치운다.
+ * 독 구름은 스스로 걷혀야 한다. 안 그러면 늪 한복판이 영구 통행 금지가 된다.
+ */
+const LIFETIME_FRAMES: Readonly<Record<HazardKind, number>> = {
+  gravestone: 0, rock: 0, fireball: 0, poison: 180,
+}
+
+/** 지형에 닿으면 부서지는가. 독 구름은 바닥에 깔리는 것이 정상이라 예외다. */
+const BREAKS_ON_TERRAIN: Readonly<Record<HazardKind, boolean>> = {
+  gravestone: true, rock: true, fireball: true, poison: false,
 }
 
 /**
@@ -116,17 +139,22 @@ export function stepHazards(
 
   const next = world.hazards
     .map((hazard) => {
+      const life = LIFETIME_FRAMES[hazard.kind]
+      if (life > 0 && hazard.ageFrames >= life) return null
+
+      const pull = gravity * GRAVITY_SCALE[hazard.kind]
+      const breaks = BREAKS_ON_TERRAIN[hazard.kind]
       const steps = Math.max(1, substepCount(hazard.vx * dt, hazard.vy * dt, map.tileSize))
       let moved = hazard
       for (let i = 0; i < steps; i += 1) {
-        const vy = moved.vy + gravity * (dt / steps)
+        const vy = moved.vy + pull * (dt / steps)
         moved = {
           ...moved,
           x: moved.x + moved.vx * (dt / steps),
           y: moved.y + vy * (dt / steps),
           vy,
         }
-        if (hitsTerrain(moved, map)) return null
+        if (breaks && hitsTerrain(moved, map)) return null
       }
       return { ...moved, ageFrames: moved.ageFrames + 1 }
     })
