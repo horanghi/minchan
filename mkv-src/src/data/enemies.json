@@ -12,6 +12,7 @@
     { "id": "spore",     "name": "포자충",   "hp": 8,  "stages": ["S4"] },
     { "id": "gaoler",    "name": "간수",     "hp": 55, "stages": ["S5"], "telegraphFrames": 24 },
     { "id": "wisp",      "name": "번개령",   "hp": 16, "stages": ["S5"] },
+    { "id": "levin",     "name": "낙뢰",     "hp": 16, "stages": ["S5"], "telegraphFrames": 24 },
     { "id": "revenant",  "name": "갑옷 기사", "hp": 70, "stages": ["S5", "S6"] },
     { "id": "cinder",    "name": "용암새",   "hp": 32, "stages": ["S6"] },
     { "id": "wizard",    "name": "마법사",   "hp": 25, "stages": ["S1", "S2", "S3", "S4", "S5", "S6"] }

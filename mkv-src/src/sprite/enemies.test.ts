@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { ENEMY_SPECS, ENEMY_KINDS } from '../entities/enemies/enemy.ts'
 import { S1_PALETTE } from '../scenery/stage1.ts'
-import { ENEMY_SPRITES, PAL_CORVID, PAL_GHOUL, PAL_GRIMM, enemyFrame } from './enemies.ts'
+import { ENEMY_SPRITES, PAL_CORVID, PAL_GHOUL, PAL_GRIMM, PAL_LEVIN, enemyFrame } from './enemies.ts'
 import { heightOf, widthOf } from './matrix.ts'
 import { missingIndices } from './palette.ts'
 
 describe('잡몹 도트', () => {
-  it('적 3종 모두 스프라이트가 있다', () => {
+  it('모든 잡몹 종류에 스프라이트가 있다', () => {
     for (const kind of ENEMY_KINDS) {
       expect(ENEMY_SPRITES[kind]).toBeDefined()
     }
@@ -118,6 +118,7 @@ describe('배경 대비', () => {
       ['ghoul', PAL_GHOUL['G']!],
       ['grimm', PAL_GRIMM['L']!],
       ['corvid', PAL_CORVID['K']!],
+      ['levin', PAL_LEVIN['C']!],
     ]
     for (const [kind, color] of bodyColors) {
       expect([kind, luma(color) > brightestBackdrop]).toEqual([kind, true])

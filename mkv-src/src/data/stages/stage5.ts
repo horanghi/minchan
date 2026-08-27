@@ -125,6 +125,8 @@ export const STAGE_5: Stage = {
     { kind: 'ghoul', tx: 18, ty: 15, facing: -1 },
     { kind: 'grimm', tx: 20, ty: 8, state: 'dormant' },
     { kind: 'corvid', tx: 28, ty: 7, state: 'perch' },
+    // 낙뢰 — 붕괴 다리 앞 상공. "멈추지 마라"를 번개로 한 번 더 말한다 (AT-1).
+    { kind: 'levin', tx: 20, ty: 11, state: 'drift' },
     { kind: 'ghoul', tx: 30, ty: 15, facing: -1 },
     { kind: 'ghoul', tx: 40, ty: 15, facing: -1 },
     { kind: 'ghoul', tx: 52, ty: 15, facing: -1 },
@@ -133,6 +135,7 @@ export const STAGE_5: Stage = {
     { kind: 'ghoul', tx: A_WIDTH + 15, ty: 15, facing: -1 },
     { kind: 'ghoul', tx: A_WIDTH + 24, ty: 15, facing: -1 },
     { kind: 'grimm', tx: A_WIDTH + 31, ty: 8, state: 'dormant' },
+    { kind: 'levin', tx: A_WIDTH + 28, ty: 11, state: 'drift' },
     { kind: 'ghoul', tx: A_WIDTH + 33, ty: 15, facing: -1 },
     { kind: 'corvid', tx: A_WIDTH + 42, ty: 7, state: 'perch' },
     { kind: 'ghoul', tx: A_WIDTH + 44, ty: 15, facing: -1 },

@@ -21,6 +21,7 @@ import {
 import { stepCorvid } from '../entities/enemies/corvid.ts'
 import { stepGhoul, isVulnerable } from '../entities/enemies/ghoul.ts'
 import { stepGrimm } from '../entities/enemies/grimm.ts'
+import { stepLevin, strikeBoxOfLevin } from '../entities/enemies/levin.ts'
 import { nextClip } from '../entities/player/animation.ts'
 import { createPlayer, stepPlayer, type Player } from '../entities/player/player.ts'
 import {
@@ -135,6 +136,7 @@ function causeOfHit(
   cairn: Cairn,
   hazards: HazardWorld,
   playerBox: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  map: Tilemap,
 ): DamageCause | null {
   const slam = slamBox(cairn)
   const byCairn = fragmentBoxes(cairn).some((b) => overlaps(b, playerBox))
@@ -144,7 +146,14 @@ function causeOfHit(
   if (byCairn) return 'cairn'
 
   const hit = enemies.find((e) => touches(e, playerBox) && isVulnerable(e))
-  return hit ? hit.kind : null
+  if (hit) return hit.kind
+
+  // 낙뢰 기둥. 구름은 접촉 데미지가 없으므로 위에서 잡히지 않는다 — 기둥만 때린다.
+  const struck = enemies.find((e) => {
+    const column = strikeBoxOfLevin(e, map)
+    return column !== null && overlaps(column, playerBox)
+  })
+  return struck ? struck.kind : null
 }
 
 /** 사망에서 조작까지 3초 예산. 연출 1.25초 + 여유. → docs/02 2.6 */
@@ -248,6 +257,7 @@ export function stepWorld(world: World, input: InputState, balance: Balance): Wo
         if (alive.state === 'dormant' && next.state !== 'dormant') grimmTookOff = true
         return next
       }
+      case 'levin': return stepLevin(alive, map, target, dt)
       default: return stepCorvid(alive, map, target, dt)
     }
   })
@@ -355,7 +365,7 @@ export function stepWorld(world: World, input: InputState, balance: Balance): Wo
   // --- 피격 -----------------------------------------------------------------
   let vitals = tickVitals(pickedVitals)
   if (!isInvulnerable(vitals)) {
-    const cause = causeOfHit(enemies, cairn, hazards, playerBox)
+    const cause = causeOfHit(enemies, cairn, hazards, playerBox, map)
 
     if (cause !== null) {
       const result = takeHit(vitals, balance.player)

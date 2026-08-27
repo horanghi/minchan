@@ -736,7 +736,7 @@ function drawChests(): void {
 }
 
 function drawEnemies(): void {
-  enemyRenderer.draw(world.enemies, loop.tick)
+  enemyRenderer.draw(world.enemies, loop.tick, world.map)
   // 히트박스는 디버그에서만 겹쳐 그린다. 스프라이트와 판정이 어긋나면 여기서 보인다.
   const g = enemyGfx.clear()
   if (!showDebugBoxes) return
