@@ -12,7 +12,7 @@ const balance = loadBalance()
 describe('밸런스 로드', () => {
   it('네 묶음이 전부 파싱된다', () => {
     expect(balance.weapons).toHaveLength(7)
-    expect(balance.enemies).toHaveLength(14)
+    expect(balance.enemies).toHaveLength(15)
     expect(balance.bosses).toHaveLength(7)
   })
 

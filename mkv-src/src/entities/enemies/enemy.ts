@@ -11,7 +11,7 @@ import { overlaps, type Aabb } from '../../physics/aabb.ts'
  * 뭉쳐 굳고, 플레이어는 왜 안 오는지 알 수 없다. → docs/10-tech-spec.md 10.4
  */
 
-export const ENEMY_KINDS = ['ghoul', 'grimm', 'corvid'] as const
+export const ENEMY_KINDS = ['ghoul', 'grimm', 'corvid', 'levin'] as const
 export type EnemyKind = (typeof ENEMY_KINDS)[number]
 
 export interface Enemy {
@@ -46,6 +46,8 @@ export const ENEMY_SPECS: Readonly<Record<EnemyKind, EnemySpec>> = {
   ghoul: { kind: 'ghoul', hp: 20, width: 12, height: 22, contactDamage: true },
   grimm: { kind: 'grimm', hp: 30, width: 14, height: 16, contactDamage: true },
   corvid: { kind: 'corvid', hp: 12, width: 12, height: 10, contactDamage: true },
+  // 구름 자체는 닿아도 아프지 않다 — 위협은 전부 예고된 번개 기둥이다.
+  levin: { kind: 'levin', hp: 16, width: 14, height: 10, contactDamage: false },
 }
 
 /** 피격 플래시 2프레임. → docs/06 6.5 */

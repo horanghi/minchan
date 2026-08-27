@@ -44,6 +44,17 @@ export const PAL_CORVID: Palette = {
 }
 
 /**
+ * 낙뢰 — 폭풍 구름에 번개 노랑.
+ *
+ * 구름 몸통은 갱도(S5)의 어둠보다 확실히 밝은 청회색이다. 위협이 기둥이라도
+ * 근원이 안 보이면 "왜 죽었는지 모름"이 된다. 노랑(Y)과 흰색(W)은
+ * 예고·타격에서만 쓰는 신호색이다.
+ */
+export const PAL_LEVIN: Palette = {
+  '0': '#0B0710', C: '#6B7FA3', c: '#46536E', L: '#9FB2CE', Y: '#FFE066', W: '#F4F7FF',
+}
+
+/**
  * 좀비 12×22 — **옆모습.** 걷기 2프레임.
  *
  * 횡스크롤에서 정면을 보면 어느 쪽으로 걸어오는지 읽을 수 없다. 옆모습이라야
@@ -217,6 +228,93 @@ const CORVID_DOWN: Matrix = [
   '............',
 ]
 
+/**
+ * 급강하 예고 — 날개를 수평으로 활짝 편다.
+ *
+ * 위/아래 날갯짓과 실루엣이 완전히 달라야 한다. 예고가 평소 프레임과
+ * 구분되지 않으면 예고가 아니다. → docs/05 5.1 원칙 2
+ */
+const CORVID_WINDUP: Matrix = [
+  '............',
+  '............',
+  '00........00',
+  '0KK000000KK0',
+  '.0KKKKKKKK0.',
+  '..0KKKKKK0Y0',
+  '..0KkkkkK00.',
+  '...0KKKK0...',
+  '....0KK0....',
+  '.....00.....',
+]
+
+/** 낙뢰 14×10 — 떠 있는 폭풍 구름. 아랫면이 울퉁불퉁하다. */
+const LEVIN_FLOAT_A: Matrix = [
+  '.....0000.....',
+  '..000CCCC000..',
+  '.0CCLLCCCCCC0.',
+  '0CLLCCCCCCCCc0',
+  '0CCCCCCCCcccc0',
+  '.0CcccCCcccc0.',
+  '..0ccc00ccc0..',
+  '...00....00...',
+  '..............',
+  '..............',
+]
+
+const LEVIN_FLOAT_B: Matrix = [
+  '.....0000.....',
+  '..000CCCC000..',
+  '.0CCCCCCLLCC0.',
+  '0cCCCCCCCCLLC0',
+  '0ccccCCCCCCCC0',
+  '.0ccccCCcccC0.',
+  '..0ccc00ccc0..',
+  '....00...00...',
+  '..............',
+  '..............',
+]
+
+/** 예고 — 배에서 불꽃이 샌다. 두 프레임이 엇갈려 지직거린다. */
+const LEVIN_WINDUP_A: Matrix = [
+  '.....0000.....',
+  '..000CCCC000..',
+  '.0CCLLCCCCCC0.',
+  '0CLLCCCCCCCCc0',
+  '0CCCCYCCCcccc0',
+  '.0CccYYCcccc0.',
+  '..0cccYYccc0..',
+  '...00.Y..00...',
+  '......Y.......',
+  '..............',
+]
+
+const LEVIN_WINDUP_B: Matrix = [
+  '.....0000.....',
+  '..000CCCC000..',
+  '.0CCLLCCCCCC0.',
+  '0CLLCCCCCCCCc0',
+  '0CCCCCCYCcccc0',
+  '.0CcccYYcccc0.',
+  '..0cccYYccc0..',
+  '...00..Y.00...',
+  '.......Y......',
+  '..............',
+]
+
+/** 타격 — 구름 속이 하얗게 타고 배에서 번개가 시작된다. 기둥은 렌더러가 그린다. */
+const LEVIN_STRIKE: Matrix = [
+  '.....0000.....',
+  '..000CWWC000..',
+  '.0CWWWWWWWWC0.',
+  '0CWWWWWWWWWWC0',
+  '0CCWWWWWWWWCC0',
+  '.0CcWWWWWWcc0.',
+  '..0ccWWWWcc0..',
+  '...00WYYW00...',
+  '.....WYYW.....',
+  '.....0YY0.....',
+]
+
 export interface EnemySprite {
   readonly palette: Palette
   readonly width: number
@@ -254,14 +352,30 @@ export const ENEMY_SPRITES: Readonly<Record<string, EnemySprite>> = {
     height: 10,
     frameTicks: 6,
     clips: {
+      windup: [CORVID_WINDUP],
       default: [CORVID_UP, CORVID_DOWN],
+    },
+  },
+  levin: {
+    palette: PAL_LEVIN,
+    width: 14,
+    height: 10,
+    frameTicks: 8,
+    clips: {
+      windup: [LEVIN_WINDUP_A, LEVIN_WINDUP_B],
+      strike: [LEVIN_STRIKE],
+      default: [LEVIN_FLOAT_A, LEVIN_FLOAT_B],
     },
   },
 }
 
 validateAll('ghoul', { walkA: GHOUL_WALK_A, walkB: GHOUL_WALK_B, rise: GHOUL_RISE })
 validateAll('grimm', { flyA: GRIMM_FLY_A, flyB: GRIMM_FLY_B, dormant: GRIMM_DORMANT })
-validateAll('corvid', { up: CORVID_UP, down: CORVID_DOWN })
+validateAll('corvid', { up: CORVID_UP, down: CORVID_DOWN, windup: CORVID_WINDUP })
+validateAll('levin', {
+  floatA: LEVIN_FLOAT_A, floatB: LEVIN_FLOAT_B,
+  windupA: LEVIN_WINDUP_A, windupB: LEVIN_WINDUP_B, strike: LEVIN_STRIKE,
+})
 
 /** 상태에 맞는 프레임. 상태별 클립이 없으면 기본 클립을 쓴다. */
 export function enemyFrame(sprite: EnemySprite, state: string, tick: number): Matrix {

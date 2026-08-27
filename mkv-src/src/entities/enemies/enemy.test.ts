@@ -218,19 +218,22 @@ describe('그림 — 공정성이 규칙이다', () => {
 })
 
 describe('까마귀 — 궤도를 바꾸지 않는다', () => {
-  it('플레이어가 아래를 지날 때만 급강하한다', () => {
+  it('플레이어가 아래를 지날 때만 반응한다 — 즉시 강하 대신 예고부터', () => {
     const e = make('corvid', 100, 40, 'perch')
     // 위에 있으면 반응하지 않는다
     expect(stepCorvid(e, FLAT, { x: 104, y: 10 }, dt).state).toBe('perch')
     // 가로로 멀면 반응하지 않는다
     expect(stepCorvid(e, FLAT, { x: 300, y: 120 }, dt).state).toBe('perch')
-    // 아래를 지나면 내려온다
-    expect(stepCorvid(e, FLAT, { x: 104, y: 120 }, dt).state).toBe('dive')
+    // 아래를 지나면 예고에 들어간다 (원칙 2 — AT-1)
+    expect(stepCorvid(e, FLAT, { x: 104, y: 120 }, dt).state).toBe('windup')
   })
 
   it('급강하 중에는 플레이어를 따라오지 않는다 — 유도하면 피할 수 없다', () => {
     let e = make('corvid', 100, 40, 'perch')
-    e = stepCorvid(e, FLAT, { x: 104, y: 120 }, dt)
+    for (let i = 0; i < CORVID.windupFrames + 1; i += 1) {
+      e = stepCorvid(e, FLAT, { x: 104, y: 120 }, dt)
+    }
+    expect(e.state).toBe('dive')
     const vx0 = e.body.vx
 
     // 플레이어가 반대편으로 도망가도 궤도가 그대로다
