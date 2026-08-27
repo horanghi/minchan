@@ -8,7 +8,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* touch-action 은 **상속되지 않는다.** html,body 에만 걸면 조상 교집합
+   규칙에 기대야 하는데 iOS 에서 미덥지 않다. 요소마다 명시한다.
+   manipulation = 스크롤·핀치는 두고 **더블탭 확대만** 뺀다.
+   캔버스는 아래 type 선택자가 이겨 none 을 유지한다(제스처를 우리가 처리). */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  touch-action:manipulation}
 :root{--paper:#e9eef2;--ink:#1b2430;--ally:#1f5fd0;--foe:#c9302c;--slate:#131a22;--slate2:#1e2833;--line:#33414f;--gold:#e8b23a}
 html,body{height:100%;overflow:hidden;background:var(--slate);
   font-family:'Nanum Gothic',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;
@@ -704,6 +709,26 @@ document.getElementById('closeUp').addEventListener('click',()=>modal.classList.
 document.getElementById('again').addEventListener('click',()=>{
   document.getElementById('over').classList.remove('on'); newGame();
 });
+
+/**
+ * 더블탭 확대 막기 — iOS 대비 안전장치.
+ *
+ * 뷰포트의 `user-scalable=no` 와 `maximum-scale=1` 은 **iOS Safari 가
+ * 접근성을 이유로 무시한다.** touch-action 만으로 안 잡히는 경우가 남아,
+ * 짧은 간격의 두 번째 탭은 기본 동작을 직접 끊는다.
+ *
+ * **버튼 위에서는 건드리지 않는다.** 이 게임의 강화·닫기·다시 시작은
+ * click 으로 도는데, 여기서 기본 동작을 막으면 강화를 연달아 두 번 누를 때
+ * 두 번째가 먹지 않는다. 버튼에는 이미 manipulation 이 걸려 있어
+ * 더블탭 확대가 나지 않는다.
+ */
+let lastTapEnd = 0;
+addEventListener('touchend', e=>{
+  const now = performance.now();
+  const onButton = e.target instanceof Element && e.target.closest('button, a');
+  if(!onButton && now - lastTapEnd <= 320) e.preventDefault();
+  lastTapEnd = now;
+}, {passive:false});
 
 let drag=null;
 // 끄는 손가락을 **하나로 고정한다.** 지도를 끄는 도중 다른 손가락으로 유닛
