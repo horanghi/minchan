@@ -36,7 +36,11 @@ html,body{height:100%;overflow:hidden;background:var(--slate);
 #goldbox .s{font-size:10px;color:#7d8fa1}
 
 #stage{flex:1;position:relative;overflow:hidden;background:var(--paper)}
-canvas{display:block;width:100%;height:100%}
+/* touch-action 은 **상속되지 않는다.** body 에 manipulation 을 걸어도
+   캔버스는 auto 인 채라, 브라우저가 가로 드래그를 제 스크롤 제스처로
+   가로채 pointercancel 을 던진다. 손가락으로는 화면이 밀리지 않는다.
+   none 으로 두어 이 캔버스의 제스처는 우리가 처리한다고 못박는다. */
+canvas{display:block;width:100%;height:100%;touch-action:none}
 #banner{position:absolute;left:0;right:0;top:12px;text-align:center;pointer-events:none}
 #banner span{display:inline-block;background:rgba(19,26,34,.9);border:2px solid var(--line);
   padding:4px 14px;font-family:'Gaegu',cursive;font-weight:700;font-size:17px;transform:rotate(-1.2deg)}
@@ -139,6 +143,13 @@ const MAX_MINERS = 10;
  * 막혀 서로 노려보기만 한다 — spread 를 이 값에 맞춰 깎는 이유다.
  */
 const BODY_GAP = 14;
+/**
+ * 화살비 재충전 (초).
+ *
+ * **한 곳에만 적는다.** 발동부와 게이지 두 군데에 26 이 각각 박혀 있어서,
+ * 한쪽만 고치면 게이지가 실제 남은 시간과 어긋난 채로 돈다.
+ */
+const ULT_CD = 14;
 const TYPES = {
   miner : {nm:'광부',   cost:75,  hp:70,  dmg:0,  rng:0,   spd:70, atk:1,   size:47, gain:0,  worker:true},
   sword : {nm:'검사',   cost:60,  hp:130, dmg:15, rng:34,  spd:72, atk:.70, size:52, gain:20},
@@ -326,8 +337,13 @@ function step(dt){
     r.t -= dt; r.tick -= dt;
     if(r.tick<=0){
       r.tick=.12;
-      for(let i=0;i<3;i++) G.parts.push({x:r.x+(Math.random()-.5)*r.w, y:gy-260, vx:0, vy:640, life:.42, c:'#1b2430', s:9, arrow:1});
-      for(const u of G.units) if(u.side==='b'&&!u.dead&&Math.abs(u.x-r.x)<r.w/2) hit(u, 16*dmgMul('a'), u.x);
+      // 화살은 **보이는 화면 전체**에 떨어뜨린다. 월드 전체(1560px)에 같은
+      // 수를 뿌리면 화면에서는 드문드문 보인다. 개수를 화면 폭에 맞춰
+      // 늘려 예전 밀도(113px 당 하나)를 그대로 유지한다.
+      const n = Math.max(3, Math.round(VIEW/113));
+      for(let i=0;i<n;i++) G.parts.push({x:cam+Math.random()*VIEW, y:gy-260, vx:0, vy:640, life:.42, c:'#1b2430', s:9, arrow:1});
+      // 피해는 자리를 가리지 않는다. 화면 밖의 적도 맞는다.
+      for(const u of G.units) if(u.side==='b'&&!u.dead) hit(u, 16*dmgMul('a'), u.x);
     }
     if(r.t<=0) r.done=1;
   }
@@ -652,8 +668,9 @@ function buy(k){
 document.getElementById('ult').addEventListener('pointerdown', e=>{
   e.preventDefault();
   if(G.ultCd>0||G.over) return;
-  G.rain.push({x:cam+VIEW*.55, w:340, t:1.7, tick:0});
-  G.ultCd=26; banner('화살비'); beep(880,.3,.05);
+  // 전 영역이다. 떨어뜨릴 자리를 고르지 않는다.
+  G.rain.push({t:1.7, tick:0});
+  G.ultCd=ULT_CD; banner('화살비'); beep(880,.3,.05);
 });
 
 const UPS=[
@@ -689,10 +706,21 @@ document.getElementById('again').addEventListener('click',()=>{
 });
 
 let drag=null;
-cv.addEventListener('pointerdown',e=>{ drag={x:e.clientX,c:cam}; });
-addEventListener('pointermove',e=>{ if(!drag) return; cam=clamp(drag.c-(e.clientX-drag.x)/scale,0,WORLD-VIEW); camUser=2.5; });
-addEventListener('pointerup',()=>drag=null);
-addEventListener('pointercancel',()=>drag=null);
+// 끄는 손가락을 **하나로 고정한다.** 지도를 끄는 도중 다른 손가락으로 유닛
+// 버튼을 누르면, 그 손가락의 pointermove 까지 카메라에 먹혀 화면이 튄다.
+cv.addEventListener('pointerdown',e=>{
+  if(drag) return;
+  drag={x:e.clientX,c:cam,id:e.pointerId};
+  // 캔버스 밖으로 손가락이 나가도 이 요소가 계속 이벤트를 받는다.
+  try{ cv.setPointerCapture(e.pointerId); }catch(_){}
+});
+addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id) return;
+  cam=clamp(drag.c-(e.clientX-drag.x)/scale,0,WORLD-VIEW); camUser=2.5;
+});
+const endDrag=e=>{ if(drag&&e.pointerId===drag.id) drag=null; };
+addEventListener('pointerup',endDrag);
+addEventListener('pointercancel',endDrag);
 
 const el=id=>document.getElementById(id);
 function hud(dt){
@@ -709,7 +737,7 @@ function hud(dt){
     btns[k].classList.toggle('off',!ok);
     btns[k].classList.toggle('rdy',ok);
   }
-  el('ultcd').style.width=(G.ultCd>0?(G.ultCd/26*100):0)+'%';
+  el('ultcd').style.width=(G.ultCd>0?(G.ultCd/ULT_CD*100):0)+'%';
   el('ult').classList.toggle('hot',G.ultCd<=0);
   if(bannerHold>0) bannerHold-=dt;
   else bannerT.textContent = fmt(G.t)+' · 위협 '+threat()+'단계';
