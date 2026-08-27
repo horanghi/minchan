@@ -157,14 +157,19 @@ let uid=0;
 function spawn(type, side, m){
   const T = TYPES[type];
   m = m || {hp:1,dmg:1,size:1};
-  const lane = type==='miner' ? 1 : Math.floor(Math.random()*3);
+  // 레인은 앞뒤 층이다. 겹쳐서 싸우므로 층이 많을수록 무리로 읽힌다.
+  // 광부는 가운데(2)에 세워 전투 대열과 섞이지 않게 한다.
+  const lane = type==='miner' ? 2 : Math.floor(Math.random()*5);
   G.units.push({
     id:++uid, type, side, T,
     x: type==='miner' ? BASE_A-24 : (side==='a' ? BASE_A+22 : BASE_B-22),
     hp: T.hp*m.hp, max: T.hp*m.hp,
     dmg: T.dmg*m.dmg, size: T.size*(m.size||1),
     cd:.3, ph:Math.random()*6, sw:0, dead:0, hurt:0,
-    lane: lane, yo: (lane-1)*9,
+    lane: lane, yo: (lane-2)*7,
+    // 붙는 거리를 조금씩 달리한다. 전부 같은 지점에 서면 여럿이 겹쳐도
+    // 한 사람처럼 보인다 — 이만큼 더 파고들어야 때린다.
+    spread: Math.random()*Math.min(20, T.rng*.6),
     bounty: side==='b' ? Math.round(T.gain*(.7+(m.hp||1)*.55)) : 0,
     job:'toMine', jobT:0, carry:0
   });
@@ -256,7 +261,7 @@ function step(dt){
     const bd = Math.abs(base.x - u.x);
     if(bd < td){ tgt = base; td = bd; }
 
-    if(td <= u.T.rng){
+    if(td <= u.T.rng - u.spread){
       u.cd -= dt;
       if(u.cd<=0){
         u.cd = u.T.atk; u.sw = 1;
@@ -272,13 +277,11 @@ function step(dt){
         beep(u.T.ranged?520:190,.05,.05);
       }
     } else {
-      let blocked=false;
-      for(const o of us){
-        if(o===u||o.dead||o.side!==u.side||o.type==='miner'||o.lane!==u.lane) continue;
-        const gap=(o.x-u.x)*dir;
-        if(gap>0 && gap<22){ blocked=true; break; }
-      }
-      if(!blocked){ u.x += dir*u.T.spd*dt; u.ph += dt*9; }
+      // **아군끼리 막지 않는다.** 예전에는 같은 레인 앞 22px 안에 아군이
+      // 있으면 멈춰서, 한 줄로 서고 맨 앞 하나만 싸웠다. 뒤의 열 명은
+      // 구경만 한다 — 병력을 모으는 재미가 거기서 죽는다.
+      // 이제는 그대로 파고들어 겹쳐 싸운다.
+      u.x += dir*u.T.spd*dt; u.ph += dt*9;
     }
     u.sw = Math.max(0, u.sw - dt*3.4);
   }
