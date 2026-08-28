@@ -69,9 +69,11 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 
 #bottom{flex:0 0 auto;background:var(--slate);border-top:2px solid var(--line);
   padding:8px 8px calc(env(safe-area-inset-bottom) + 8px)}
-/* 열 칸. 다섯 칸씩 두 줄이면 버튼 폭이 처음(5종 한 줄) 과 같아 글자가
-   뭉개지지 않고, 세 줄로 늘어나 전장을 깎아먹지도 않는다. */
-#units{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+/* 열다섯 칸. 다섯 칸씩 세 줄. 칸을 더 늘리면 폰에서 글자가 뭉개지므로
+   줄을 늘렸다. 그만큼 전장이 줄어드는 것은 감수한다. */
+#units{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.ubtn{padding:4px 1px 3px}
+.ubtn canvas{width:24px;height:28px}
 .ubtn{background:var(--slate2);border:2px solid var(--line);border-radius:4px;padding:6px 1px 4px;
   display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;position:relative}
 .ubtn:active{transform:translateY(2px)}
@@ -267,9 +269,15 @@ const STAGES = [
   { nm:'깊은 광산',   gold:300, baseA:1500, baseB:5000, mineT:3.6, bossEvery:50, bossHp:3.2,
     foes:[['sword',0,8],['archer',.6,9],['shield',1.2,4],['spear',1.2,4],['medic',2.5,1.5],['giant',3,1.5]],
     tip:'광맥이 깊어 금이 늦다. 적 궁수가 많으니 방패병을 앞에 세워라.' },
-  { nm:'거인의 관문', gold:400, baseA:1800, baseB:6500, mineT:2.0, bossEvery:28, bossHp:4.2,
-    foes:[['sword',0,8],['archer',.6,5],['shield',1.2,4],['spear',.8,4],['medic',1.5,2],['bomber',2,3],['giant',1.5,3]],
-    tip:'보스가 자주 온다. 적 의무병부터 끊어라.' },
+  { nm:'무너진 성채', gold:500, baseA:1800, baseB:7500, mineT:2.0, bossEvery:26, bossHp:3.4,
+    // **여기서부터 다른 게임이다.** 적이 새 병종 넷을 데리고 나온다.
+    ramp:1.9,                       // 시간에 따른 성장이 두 배 가까이 빠르다
+    gap:[2.4,.42,.019],             // 처음 2.4초 → 최소 0.42초 간격 (1·2판은 3.2 → .75)
+    bossType:'berserk',             // 거인 대신 버서커. 사거리 밖까지 내려찍는다
+    foes:[['sword',0,6],['archer',.4,5],['spear',.6,4],['shield',.8,4],
+          ['giant',1.2,3],['dark',1.2,3],['medic',1.4,1.5],
+          ['sniper',1.6,3],['bomber',1.8,2],['kamikaze',2.0,3],['necro',2.6,2]],
+    tip:'암흑기사는 때릴수록 회복하고, 사령술사는 끝없이 불러낸다. 뒤부터 끊어라.' },
 ];
 /** 지금 판 (0부터). */
 let stageIx = 0;
@@ -337,10 +345,54 @@ const TYPES = {
 
   // 마법사 — 연쇄 번개. 겨눈 적에서 가까운 적으로 네 번까지 튄다.
   // 튈 때마다 피해가 20%씩 준다. 뭉친 줄을 한 번에 훑는 값비싼 한 방.
-  mage  : {nm:'마법사',   cost:240, hp:90,  dmg:26, rng:210, spd:56, atk:1.90,size:53, gain:70, chain:4, chainRng:78}
+  mage  : {nm:'마법사',   cost:240, hp:90,  dmg:26, rng:210, spd:56, atk:1.90,size:53, gain:70, chain:4, chainRng:78},
+
+  /* ── 큰 것들 ── */
+
+  // 로마 기병 — 빠르다. **달려온 거리가 곧 첫 타의 무게**다.
+  // 멈춰서 치고받기 시작하면 평범해진다. 뚫고 들어가는 데 쓰는 유닛이다.
+  cavalry:{nm:'로마 기병',cost:175, hp:290, dmg:26, rng:44,  spd:132,atk:1.00,size:64, gain:58, charge:true},
+
+  // 사제 — 가장 많이 다친 아군 하나를 크게 고친다. 의무병이 무리를 얕게
+  // 훑는다면 이쪽은 한 명을 확실히 살린다. 전선 뒤에 스스로 자리를 잡는다.
+  priest: {nm:'사제',     cost:155, hp:100, dmg:0,  rng:170, spd:62, atk:1.20,size:51, gain:48, healer:true, heal:22},
+
+  // 용사 — 검기가 직선을 관통한다. 줄지어 선 적을 한 번에 가른다.
+  hero  : {nm:'용사',     cost:560, hp:980, dmg:78, rng:135, spd:88, atk:.85, size:68, gain:230, beam:true},
+
+  // 버서커 — 느리고 두껍다. 사거리 밖 118px 까지 내려찍는다(먼 쪽은 70%).
+  berserk:{nm:'버서커',   cost:680, hp:2800,dmg:140,rng:80,  spd:26, atk:2.60,size:126,gain:280, slam:118},
+
+  // 타이탄 — 전진하지 않는다(stand 150). 세 동작을 돌아가며 쓴다:
+  // 손목 레이저(520·0.75) → 대검 내려찍기(230·1.45) → 코어 빔(780·2.1).
+  titan : {nm:'타이탄',   cost:1800,hp:9000,dmg:200,rng:520, spd:20, atk:2.10,size:252,gain:900, titan:true, stand:150},
+
+  /* ── 적 전용. 3판에서 나온다 ── */
+
+  // 암흑기사 — 준 피해의 45%를 회복한다. 오래 끌수록 이쪽이 손해다.
+  dark  : {nm:'암흑기사', cost:0,   hp:1050,dmg:58, rng:42,  spd:64, atk:.90, size:68, gain:170, drain:.45, col:'#5b3fa0'},
+
+  // 저격수 — 사거리 430. 우리 궁수(235)보다 훨씬 멀리서 때린다.
+  sniper: {nm:'저격수',   cost:0,   hp:95,  dmg:95, rng:430, spd:44, atk:2.40,size:54, gain:150, ranged:true, col:'#2f6b5a'},
+
+  // 자폭병 — 빠르게 파고들어 반경 130 을 터뜨리고 죽는다. 뭉쳐 있으면 재앙이다.
+  kamikaze:{nm:'자폭병',  cost:0,   hp:150, dmg:190,rng:34,  spd:112,atk:.40, size:50, gain:120, suicide:130, col:'#c96a1a'},
+
+  // 사령술사 — 해골병을 계속 불러낸다. **먼저 끊지 않으면 줄이 안 끊긴다.**
+  necro : {nm:'사령술사', cost:0,   hp:200, dmg:0,  rng:220, spd:54, atk:2.80,size:57, gain:190, summon:true, col:'#7a2fa0'},
+
+  // 해골병 — 소환물. 약하지만 끝이 없다.
+  bone  : {nm:'해골병',   cost:0,   hp:65,  dmg:14, rng:32,  spd:80, atk:.75, size:45, gain:12,  col:'#6b7785'}
 };
-// 두 줄 × 다섯 칸. 윗줄은 기본, 아랫줄은 비싼 것과 마법이다.
-const ORDER = ['miner','sword','archer','spear','shield','medic','frost','bomber','mage','giant'];
+/**
+ * 살 수 있는 병종. 다섯 칸 × 세 줄이다.
+ *
+ * 적 전용(암흑기사·저격수·자폭병·사령술사·해골병)은 여기 없다 — 표에는
+ * 있지만 버튼이 없으니 살 수 없다.
+ */
+const ORDER = ['miner','sword','archer','spear','shield',
+               'medic','priest','frost','bomber','mage',
+               'cavalry','hero','berserk','giant','titan'];
 
 let G, cam=0, camUser=0, last=0, dpr=1, cw=0, ch=0, scale=1, VIEW=620, gy=0;
 
@@ -357,7 +409,7 @@ function newGame(){
   G = {
     t:0,
     baseA:{hp:S.baseA,max:S.baseA,x:BASE_A}, baseB:{hp:S.baseB,max:S.baseB,x:BASE_B},
-    units:[], shots:[], parts:[], texts:[], rain:[], bolts:[],
+    units:[], shots:[], parts:[], texts:[], rain:[], bolts:[], beams:[], shake:0,
     spawnT:2.5, bossT:S.bossEvery,
     /**
      * 진영별 살림. 1인 판에서 b 쪽 지갑은 아무도 열지 않는다 — AI 는
@@ -391,7 +443,7 @@ function spawn(type, side, m){
     x: baseX(side) + dirOf(side) * (type==='miner' ? -24 : 22),
     hp: T.hp*m.hp, max: T.hp*m.hp,
     dmg: T.dmg*m.dmg, size: T.size*(m.size||1),
-    cd:.3, ph:Math.random()*6, sw:0, dead:0, hurt:0, slowT:0,
+    cd:.3, ph:Math.random()*6, sw:0, dead:0, hurt:0, slowT:0, chg:0, combo:0,
     lane: lane, yo: (lane-3)*5,
     // 붙는 거리를 조금씩 달리한다. 전부 같은 지점에 서면 여럿이 겹쳐도
     // 한 사람처럼 보인다 — 이만큼 더 파고들어야 때린다.
@@ -429,16 +481,27 @@ function pickFoe(){
   return open[open.length-1][0];
 }
 
+/**
+ * 시간에 따른 적 성장. 판마다 기울기가 다르다.
+ *
+ * 1·2판은 배우는 판이라 완만하다. 3판은 `ramp` 로 거의 두 배 빠르게 오른다 —
+ * 병종만 바꿔서는 "새 얼굴이 나오는 같은 판" 이 된다.
+ */
 function foeBoost(){
-  const m = G.t/60;
-  return {hp:1+m*.55, dmg:1+m*.38, size:1};
+  const m = G.t/60, k = stage().ramp || 1;
+  return {hp:1+m*.55*k, dmg:1+m*.38*k, size:1};
 }
-function spawnGap(){ return Math.max(.75, 3.2 - G.t*.013); }
+/** 스폰 간격. [처음, 최소, 초당 감소]. 3판은 더 촘촘하다. */
+function spawnGap(){
+  const g = stage().gap || [3.2,.75,.013];
+  return Math.max(g[1], g[0] - G.t*g[2]);
+}
 function threat(){ return 1 + Math.floor(G.t/45); }
 
 /* ============ 루프 ============ */
 function step(dt){
   if(G.over) return;
+  _dt = dt;
   G.t += dt;
   W('a').gold += 1.2*dt;
   W('b').gold += 1.2*dt;
@@ -454,8 +517,9 @@ function step(dt){
   if(G.bossT<=0 && !(net.on && net.ready)){
     G.bossT = stage().bossEvery;
     const b = foeBoost();
-    spawn('giant','b',{hp:b.hp*stage().bossHp, dmg:b.dmg*1.5, size:1.35});
-    banner('보스 출현');
+    const bt = stage().bossType || 'giant';
+    spawn(bt,'b',{hp:b.hp*stage().bossHp, dmg:b.dmg*1.5, size:1.35});
+    banner(bt==='giant' ? '보스 출현' : TYPES[bt].nm+' 출현');
     beep(150,.3,.06);
   }
 
@@ -503,6 +567,48 @@ function step(dt){
     }
 
     const dir = u.side==='a' ? 1 : -1;
+
+    /* 사령술사 — 해골병을 불러내고, 전선 뒤에 선다 */
+    if(u.T.summon){
+      u.cd -= dt;
+      if(u.cd<=0){
+        u.cd = u.T.atk; u.sw = 1;
+        for(let i=0;i<2;i++) spawn('bone', u.side, foeBoost());
+        // 방금 만든 둘을 술사 옆으로 당긴다. 본진에서 걸어오면 소환이 아니다.
+        const n=G.units.length;
+        if(n>=2){ G.units[n-1].x = u.x - dir*14; G.units[n-2].x = u.x + dir*10; }
+        for(let i=0;i<8;i++) G.parts.push({x:u.x+(Math.random()-.5)*30, y:gy-20,
+          vx:0, vy:-90-Math.random()*70, life:.6, c:'#9a5fd0', s:3});
+        float(u.x, gy-u.size-10+u.yo, '소환', '#9a5fd0', .9);
+        beep(210,.18,.04);
+      }
+      standBehind(u, dir, 90, o=>!o.T.summon);
+      u.sw=Math.max(0,u.sw-dt*3.4);
+      continue;
+    }
+
+    /* 사제 — 가장 많이 다친 아군 하나를 크게 고친다 */
+    if(u.T.healer){
+      let worst=null, wd=1e9;
+      for(const o of us){
+        if(o.side!==u.side||o.dead||o.type==='miner'||o.hp>=o.max) continue;
+        const d=Math.abs(o.x-u.x); if(d<wd){ wd=d; worst=o; }
+      }
+      if(worst && wd<=u.T.rng){
+        u.cd-=dt;
+        if(u.cd<=0){
+          u.cd=u.T.atk; u.sw=1;
+          worst.hp=Math.min(worst.max, worst.hp+u.T.heal);
+          float(worst.x, gy-worst.size-6+worst.yo, '+'+u.T.heal, '#3fa96b', .8);
+          for(let i=0;i<4;i++) G.parts.push({x:worst.x+(Math.random()-.5)*18,
+            y:gy-worst.size*.5+worst.yo, vx:0, vy:-70-Math.random()*50, life:.5, c:'#5fd39b', s:3});
+          beep(980,.09,.025);
+        }
+      } else standBehind(u, dir, 70, o=>!o.T.healer);
+      u.sw=Math.max(0,u.sw-dt*3.4);
+      continue;
+    }
+
     let tgt=null, td=1e9, best=1e9;
     for(const o of us){
       if(o.side===u.side || o.dead) continue;
@@ -514,12 +620,27 @@ function step(dt){
     const bd = Math.abs(base.x - u.x);
     if(bd < td){ tgt = base; td = bd; }
 
-    if(td <= u.T.rng - u.spread){
+    const reach = u.T.rng - u.spread;
+    if(td <= reach){
       u.cd -= dt;
       if(u.cd<=0){
         u.cd = u.T.atk; u.sw = 1;
-        const dam = u.dmg * dmgMul(u.side);
-        if(u.T.medic){
+        let dam = u.dmg * dmgMul(u.side);
+
+        // 로마 기병 — 달려온 만큼이 첫 타에 실린다. 멈춰 서면 그냥 검사다.
+        if(u.T.charge && u.chg>1.1){
+          dam *= 2.6;
+          ring(tgt.x, gy-(tgt.size||60)*.55+(tgt.yo||0), '#f0d27a', 9, .3);
+          puff(tgt.x, gy-(tgt.size||60)*.5+(tgt.yo||0), '#f0d27a', 8);
+          beep(240,.16,.055);
+        }
+        u.chg = 0;
+
+        if(u.T.suicide){ blowUp(u, dam, dir); }
+        else if(u.T.titan){ titanCombo(u, dam, dir); }
+        else if(u.T.slam){ slamHit(u, dam, dir); }
+        else if(u.T.beam){ beamHit(u, dam, dir); }
+        else if(u.T.medic){
           // 때리지 않고 고친다. 자기 자신도 포함이다 — 앞에 나선 의무병이
           // 혼자 죽어 나가면 쓸 이유가 없다.
           let n=0;
@@ -553,9 +674,22 @@ function step(dt){
           if(Math.abs(base.x-u.x) <= u.T.rng+6) hit(base, dam, base.x);
         }
         else hit(tgt, dam, u.x+dir*u.T.rng*.8);
+        // 암흑기사 — 준 만큼 회복한다. 오래 끌수록 이쪽이 손해다.
+        if(u.T.drain && !u.dead){
+          const heal = Math.round(dam*u.T.drain);
+          u.hp = Math.min(u.max, u.hp + heal);
+          float(u.x, gy-u.size-8+u.yo, '+'+heal, '#9a5fd0', .6);
+        }
         beep(u.T.chain?1180:(u.T.medic?740:(u.T.ranged?520:190)),.05,.05);
       }
-    } else {
+    }
+
+    // **때리는 것과 걷는 것은 따로다.**
+    //
+    // 예전에는 if/else 라, 사거리 안에 들어오면 무조건 멈췄다. 타이탄은
+    // 사거리가 520 이라 한참 밖에서 서 버려 `stand:150` 이 죽은 값이 됐다.
+    // 얼마나 다가갈지는 stand 가 정하고, 없으면 사거리까지다.
+    if(td > (u.T.stand || reach)){
       // **아군끼리는 막지 않는다.** 예전에는 같은 레인 앞 22px 안에 아군이
       // 있으면 멈춰서, 한 줄로 서고 맨 앞 하나만 싸웠다. 뒤의 열 명은
       // 구경만 한다 — 병력을 모으는 재미가 거기서 죽는다.
@@ -571,7 +705,7 @@ function step(dt){
         const gap=(o.x-u.x)*dir;
         if(gap>0 && gap<BODY_GAP){ blocked=true; break; }
       }
-      if(!blocked){ u.x += dir*spdOf(u)*dt; u.ph += dt*9; }
+      if(!blocked){ u.x += dir*spdOf(u)*dt; u.ph += dt*9; u.chg += dt; }
     }
     u.sw = Math.max(0, u.sw - dt*3.4);
   }
@@ -630,12 +764,15 @@ function step(dt){
 
   for(const p of G.parts){
     p.life -= dt; p.x += p.vx*dt; p.y += p.vy*dt;
-    if(!p.arrow) p.vy += 520*dt;
-    if(p.y>gy){ p.y=gy; p.life=Math.min(p.life,.1); }
+    if(!p.arrow && !p.ring) p.vy += 520*dt;
+    if(!p.ring && p.y>gy){ p.y=gy; p.life=Math.min(p.life,.1); }
   }
   G.parts = G.parts.filter(p=>p.life>0);
   for(const b of G.bolts) b.t -= dt;
   G.bolts = G.bolts.filter(b=>b.t>0);
+  for(const b of G.beams) b.life -= dt;
+  G.beams = G.beams.filter(b=>b.life>0);
+  if(G.shake>0) G.shake = Math.max(0, G.shake - dt*2.2);
   for(const t of G.texts){ t.life-=dt; t.y -= 34*dt; }
   G.texts = G.texts.filter(t=>t.life>0);
   G.units = G.units.filter(u=>u.dead < 1.3);
@@ -684,6 +821,96 @@ function shoot(x,y,tgt,dmg,side,splash,slow){
   const tx=tgt.x, ty=tgt.T?gy-tgt.size*.6+tgt.yo:gy-70;
   const dist=Math.hypot(tx-x,ty-y);
   G.shots.push({x0:x,y0:y,x,y,tx,ty,tgt,dmg,side,splash,slow,t:0,dur:Math.max(.22,dist/620)});
+}
+
+/** 전선 뒤 `back` px 에 자리를 잡는다. 사제·사령술사가 쓴다. */
+function standBehind(u, dir, back, keep){
+  let front=null, fd=1e9;
+  for(const o of G.units){
+    if(o.side!==u.side||o.dead||o.type==='miner'||!keep(o)) continue;
+    const d=Math.abs(o.x-u.x); if(d<fd){ fd=d; front=o; }
+  }
+  const goal = front ? front.x - dir*back : baseX(u.side) + dir*90;
+  if(Math.abs(goal-u.x)>6){ u.x += Math.sign(goal-u.x)*spdOf(u)*dt0(); u.ph += dt0()*9; }
+}
+/** 이 틱의 dt. 능력 함수들이 루프 밖에 있어 한 곳에서 받아 둔다. */
+let _dt = 1/60;
+function dt0(){ return _dt; }
+
+/** 자폭 — 반경 안을 터뜨리고 자기도 죽는다. 절반 밖은 60%만 받는다. */
+function blowUp(u, dam, dir){
+  const R=u.T.suicide;
+  for(const o of G.units){
+    if(o.side===u.side||o.dead) continue;
+    const d=Math.abs(o.x-u.x);
+    if(d < R) hit(o, dam*(d<R*.5?1:.6), o.x);
+  }
+  const b = u.side==='a' ? G.baseB : G.baseA;
+  if(b.hp>0 && Math.abs(b.x-u.x) < R+30) hit(b, dam*.8, b.x);
+  ring(u.x, gy-u.size*.4+u.yo, '#e8724a', R*.85, .4);
+  ring(u.x, gy-u.size*.4+u.yo, '#ffd77a', R*.5, .28);
+  puff(u.x, gy-u.size*.4+u.yo, '#e8894a', 22);
+  G.shake=.3; u.hp=0; u.dead=.001;
+  beep(90,.3,.07);
+}
+
+/** 앞쪽 직선을 훑는다. 광역 능력들이 공유한다. */
+function lineHit(u, dir, reach, dam, nearMul, nearAt){
+  for(const o of G.units){
+    if(o.side===u.side||o.dead) continue;
+    const off=(o.x-u.x)*dir;
+    if(off > -40 && off < reach) hit(o, dam*(nearAt && off<nearAt ? nearMul : (nearAt?0.7:1)), o.x);
+  }
+  const b = u.side==='a' ? G.baseB : G.baseA;
+  const boff=(b.x-u.x)*dir;
+  if(b.hp>0 && boff > -40 && boff < reach) hit(b, dam*(nearAt && boff<nearAt ? nearMul : (nearAt?0.7:1)), b.x);
+}
+
+/** 버서커 내려찍기 — 사거리 밖까지 닿지만 먼 쪽은 약하다. */
+function slamHit(u, dam, dir){
+  lineHit(u, dir, u.T.rng + u.T.slam, dam, 1, u.T.rng);
+  ring(u.x+dir*(u.T.rng*.7), gy-6, '#4a5568', u.T.slam*.8, .42);
+  ring(u.x+dir*(u.T.rng*.7), gy-6, '#c9a0a0', u.T.slam*.5, .3);
+  puff(u.x+dir*u.T.rng*.8, gy-14, '#8a94a3', 16);
+  G.shake=.38; beep(80,.32,.075);
+}
+
+/** 용사 검기 — 직선을 관통한다. */
+function beamHit(u, dam, dir){
+  lineHit(u, dir, u.T.rng, dam);
+  G.beams.push({x1:u.x, x2:u.x+dir*u.T.rng, y:gy-u.size*.55+u.yo, life:.3, max:.3});
+  G.shake=.12; beep(1180,.16,.05);
+}
+
+/**
+ * 타이탄 — 세 동작을 돌아가며 쓴다.
+ *
+ * 같은 것만 반복하면 큰 유닛이 아니라 큰 숫자가 된다. 사거리와 배율을
+ * 서로 다르게 두어, 지금 어느 동작인지가 화면에서 읽히게 한다.
+ */
+function titanCombo(u, dam, dir){
+  const stage = (u.combo|0) % 3;
+  u.combo = (u.combo|0) + 1;
+  if(stage===0){
+    lineHit(u, dir, 520, dam*.75);
+    G.beams.push({x1:u.x+dir*u.size*.28, x2:u.x+dir*520, y:gy-u.size*.60+u.yo,
+      life:.26, max:.26, c1:'rgba(255,90,70,.45)', c2:'#ffd9c8', w:16});
+    G.shake=.14; beep(1400,.16,.05);
+  } else if(stage===1){
+    lineHit(u, dir, 230, dam*1.45);
+    ring(u.x+dir*140, gy-8, '#4a5568', 170, .42);
+    ring(u.x+dir*140, gy-8, '#dfe8f0', 130, .36);
+    puff(u.x+dir*150, gy-16, '#8a94a3', 26);
+    G.shake=.45; beep(70,.4,.085);
+  } else {
+    lineHit(u, dir, 780, dam*2.1);
+    G.beams.push({x1:u.x, x2:u.x+dir*780, y:gy-u.size*.52+u.yo,
+      life:.55, max:.55, c1:'rgba(120,240,255,.5)', c2:'#f2ffff', w:70});
+    G.beams.push({x1:u.x, x2:u.x+dir*780, y:gy-u.size*.52+u.yo,
+      life:.55, max:.55, c1:'rgba(90,160,255,.35)', c2:'#bfe9ff', w:120});
+    G.shake=.45; beep(220,.6,.08);
+    float(u.x+dir*200, gy-u.size*.75+u.yo, '코어 빔', '#8ff0ff', 1.3);
+  }
 }
 
 /** 지금 낼 수 있는 속도. 얼어 있으면 절반이다. */
@@ -737,6 +964,8 @@ function jagged(nodes){
   }
   return out;
 }
+/** 퍼지는 고리 하나. 내려찍기·폭발의 범위를 눈으로 보여준다. */
+function ring(x,y,c,size,life){ G.parts.push({x,y,vx:0,vy:0,life,max:life,c,s:size,ring:1}); }
 function puff(x,y,c,n){
   for(let i=0;i<n;i++) G.parts.push({x,y,vx:(Math.random()-.5)*130,vy:-Math.random()*150-30,life:.35+Math.random()*.25,c,s:2+Math.random()*2});
 }
@@ -783,7 +1012,10 @@ function draw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,cw,ch);
   ctx.fillStyle='#e9eef2'; ctx.fillRect(0,0,cw,ch);
-  ctx.setTransform(dpr*scale,0,0,dpr*scale,-cam*scale*dpr,0);
+  // 큰 한 방은 화면이 흔들려야 무게가 산다. 카메라 변환에 얹는다.
+  const sh = G.shake>0 ? G.shake*9 : 0;
+  const shx = sh ? (Math.random()-.5)*sh : 0, shy = sh ? (Math.random()-.5)*sh : 0;
+  ctx.setTransform(dpr*scale,0,0,dpr*scale,(-cam+shx)*scale*dpr, shy*scale*dpr);
   const L=cam, R=cam+VIEW, bot=ch/scale;
 
   ctx.strokeStyle='#d3dee6'; ctx.lineWidth=1;
@@ -808,6 +1040,18 @@ function draw(){
   drawBase(G.baseA,'a');
   drawBase(G.baseB,'b');
   for(const u of [...G.units].sort((a,b)=>(a.yo-b.yo)||(a.size-b.size))) drawUnit(u);
+
+  /* 검기·레이저. 굵은 겉선 위에 밝은 심을 겹친다 */
+  for(const b of G.beams){
+    const a = b.life/b.max;
+    ctx.globalAlpha = a;
+    ctx.lineCap='round';
+    ctx.lineWidth=(b.w||22); ctx.strokeStyle=b.c1||'rgba(150,210,255,.4)';
+    ctx.beginPath(); ctx.moveTo(b.x1,b.y); ctx.lineTo(b.x2,b.y); ctx.stroke();
+    ctx.lineWidth=(b.w||22)*.32; ctx.strokeStyle=b.c2||'#ffffff';
+    ctx.beginPath(); ctx.moveTo(b.x1,b.y); ctx.lineTo(b.x2,b.y); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
   /* 연쇄 번개. 굵은 하늘빛 위에 흰 심을 겹쳐 빛나 보이게 한다 */
   for(const b of G.bolts){
@@ -834,6 +1078,12 @@ function draw(){
   for(const p of G.parts){
     ctx.globalAlpha=Math.max(0,Math.min(1,p.life*3));
     if(p.arrow){ ctx.strokeStyle=p.c; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(p.x,p.y-p.s); ctx.lineTo(p.x,p.y+p.s); ctx.stroke(); }
+    else if(p.ring){
+      // 퍼지는 고리. 충격이 어디까지 닿았는지를 크기로 말한다.
+      const k = 1 - p.life/p.max;
+      ctx.strokeStyle=p.c; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, p.s*(.35+k*.75), p.s*(.16+k*.3), 0, 0, 7); ctx.stroke();
+    }
     else { ctx.fillStyle=p.c; ctx.fillRect(p.x-p.s/2,p.y-p.s/2,p.s,p.s); }
   }
   ctx.globalAlpha=1;
@@ -888,7 +1138,11 @@ function drawUnit(u){
   const ally=u.side==='a', h=u.size;
   let dir = ally?1:-1;
   if(u.type==='miner') dir = dirOf(u.side) * ((u.job==='toMine') ? -1 : 1);
-  const col = u.hurt>0 ? '#f0663f' : (u.type==='miner' ? '#c98f1a' : (ally?'#1f5fd0':'#c9302c'));
+  // T.col 이 있으면 그 색을 쓴다. 3판에 적 다섯 종이 섞여 나오는데 전부
+  // 같은 빨강이면 무엇이 오는지 구분할 수 없다.
+  const col = u.hurt>0 ? '#f0663f'
+            : (u.type==='miner' ? '#c98f1a'
+            : (u.T.col ? u.T.col : (ally?'#1f5fd0':'#c9302c')));
   ctx.save(); ctx.translate(u.x, gy+u.yo);
   ctx.globalAlpha=.13; ctx.fillStyle='#1b2430';
   ctx.beginPath(); ctx.ellipse(0,0,h*.2,h*.05,0,0,7); ctx.fill(); ctx.globalAlpha=1;
@@ -956,6 +1210,64 @@ function drawUnit(u){
     ctx.strokeStyle='#7fd39b'; ctx.lineWidth=lw*1.15;
     ctx.beginPath(); ctx.moveTo(h*.2,shY-h*.3); ctx.lineTo(h*.2,shY-h*.04); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(h*.07,shY-h*.17); ctx.lineTo(h*.33,shY-h*.17); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineWidth=lw;
+  } else if(u.type==='cavalry'){
+    /* 말 위에서 창을 낮게 겨눈다 */
+    ctx.lineWidth=lw*.9;
+    ctx.beginPath(); ctx.ellipse(-h*.05, -h*.2, h*.3, h*.11, 0, 0, 7); ctx.stroke();
+    for(const o of [-.26,-.08,.1,.28]){
+      ctx.beginPath(); ctx.moveTo(h*o, -h*.14); ctx.lineTo(h*o+p*h*.06, 0); ctx.stroke();
+    }
+    ctx.lineWidth=lw;
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(hx,hy); ctx.stroke();
+    const la = -0.15 + sw*.5;
+    ctx.lineWidth=lw*.8;
+    ctx.beginPath(); ctx.moveTo(hx-Math.cos(la)*h*.2, hy-Math.sin(la)*h*.2);
+    ctx.lineTo(hx+Math.cos(la)*h*.75, hy+Math.sin(la)*h*.75); ctx.stroke();
+    ctx.lineWidth=lw;
+  } else if(u.type==='priest'){
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(-h*.17,shY+h*.13); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(h*.2,shY-h*.12); ctx.stroke();
+    ctx.strokeStyle='#3fa96b'; ctx.lineWidth=lw*1.1;
+    ctx.beginPath(); ctx.moveTo(h*.2,shY-h*.34); ctx.lineTo(h*.2,shY+h*.16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(h*.06,shY-h*.2); ctx.lineTo(h*.34,shY-h*.2); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineWidth=lw;
+  } else if(u.type==='hero'){
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(-h*.22,shY+h*.2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(hx,hy); ctx.stroke();
+    /* 전설의 검 — 크게, 휘두를수록 앞으로 */
+    const ba = armA-.7+sw*1.6;
+    ctx.lineWidth=lw*1.6;
+    ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(hx+Math.cos(ba)*h*.7, hy+Math.sin(ba)*h*.7); ctx.stroke();
+    ctx.lineWidth=lw*.9; ctx.strokeStyle='#ffe9a8';
+    ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(hx+Math.cos(ba)*h*.62, hy+Math.sin(ba)*h*.62); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineWidth=lw;
+  } else if(u.type==='berserk'){
+    /* 두 손 도끼. 어깨가 넓다 */
+    ctx.lineWidth=lw*1.4;
+    ctx.beginPath(); ctx.moveTo(-h*.13,shY); ctx.lineTo(h*.13,shY); ctx.stroke();
+    ctx.lineWidth=lw;
+    for(const sgn of [-1,1]){
+      const ba = armA-.4+sw*1.5 + sgn*.35;
+      ctx.beginPath(); ctx.moveTo(sgn*h*.12,shY); ctx.lineTo(hx,hy); ctx.stroke();
+      ctx.lineWidth=lw*1.5;
+      ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(hx+Math.cos(ba)*h*.5, hy+Math.sin(ba)*h*.5); ctx.stroke();
+      ctx.lineWidth=lw;
+    }
+  } else if(u.type==='titan'){
+    /* 사람이 아니다. 몸통·팔·코어로 세운다 */
+    ctx.lineWidth=lw*1.3;
+    ctx.beginPath(); ctx.rect(-h*.17, -h*.78, h*.34, h*.46); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-h*.1,-h*.32); ctx.lineTo(-h*.12,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(h*.1,-h*.32); ctx.lineTo(h*.12,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-h*.17,-h*.7); ctx.lineTo(-h*.3,-h*.4); ctx.stroke();
+    const aa = -0.1 + sw*.7;
+    ctx.beginPath(); ctx.moveTo(h*.17,-h*.7);
+    ctx.lineTo(h*.17+Math.cos(aa)*h*.34, -h*.7+Math.sin(aa)*h*.34); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,-h*.9,h*.1,0,7); ctx.stroke();
+    /* 코어 — 시전할수록 밝다 */
+    ctx.strokeStyle='#8ff0ff'; ctx.lineWidth=lw*1.1;
+    ctx.beginPath(); ctx.arc(0,-h*.55,h*.075*(1+sw*.7),0,7); ctx.stroke();
     ctx.strokeStyle=col; ctx.lineWidth=lw;
   } else if(u.type==='mage' || u.type==='frost'){
     const magic = u.type==='mage' ? '#bfe6ff' : '#7fd0ff';
@@ -1061,7 +1373,9 @@ function iconOf(c,k){
   x.setTransform(1,0,0,1,0,0);
   x.clearRect(0,0,c.width,c.height);
   x.translate(30,64); x.scale(.9,.9);
-  x.strokeStyle = k==='miner' ? '#e0b45f' : (k==='medic' ? '#8fd8ae' : TEAM[ME].ink);
+  x.strokeStyle = k==='miner' ? '#e0b45f'
+    : (k==='medic'||k==='priest' ? '#8fd8ae'
+    : (k==='titan' ? '#8fd8e8' : TEAM[ME].ink));
   x.lineWidth=2.6; x.lineCap='round';
   const hip=-h*.42, sh=-h*.72;
   x.beginPath();
@@ -1090,6 +1404,38 @@ function iconOf(c,k){
     x.beginPath(); x.moveTo(13,sh-14); x.lineTo(13,sh-1); x.stroke();
     x.beginPath(); x.moveTo(7,sh-8); x.lineTo(19,sh-8); x.stroke();
     x.lineWidth=2.6;
+  } else if(k==='cavalry'){
+    x.beginPath(); x.ellipse(-2,-12,13,5,0,0,7); x.stroke();
+    x.beginPath(); x.moveTo(-9,-8); x.lineTo(-9,0); x.moveTo(6,-8); x.lineTo(6,0); x.stroke();
+    x.lineWidth=2.1;
+    x.beginPath(); x.moveTo(-4,sh+8); x.lineTo(24,sh-2); x.stroke();
+    x.lineWidth=2.6;
+  } else if(k==='priest'){
+    x.beginPath(); x.moveTo(0,sh); x.lineTo(9,sh-5); x.stroke();
+    x.strokeStyle='#7fdcae'; x.lineWidth=3;
+    x.beginPath(); x.moveTo(13,sh-16); x.lineTo(13,sh+4); x.stroke();
+    x.beginPath(); x.moveTo(7,sh-9); x.lineTo(19,sh-9); x.stroke();
+    x.lineWidth=2.6;
+  } else if(k==='hero'){
+    x.beginPath(); x.moveTo(0,sh); x.lineTo(10,sh+4); x.stroke();
+    x.lineWidth=4;
+    x.beginPath(); x.moveTo(10,sh+4); x.lineTo(27,sh-16); x.stroke();
+    x.strokeStyle='#ffe9a8'; x.lineWidth=2;
+    x.beginPath(); x.moveTo(10,sh+4); x.lineTo(25,sh-14); x.stroke();
+    x.lineWidth=2.6;
+  } else if(k==='berserk'){
+    x.lineWidth=3.6; x.beginPath(); x.moveTo(-7,sh); x.lineTo(7,sh); x.stroke();
+    x.lineWidth=3.2;
+    x.beginPath(); x.moveTo(-7,sh); x.lineTo(-20,sh-12); x.stroke();
+    x.beginPath(); x.moveTo(7,sh); x.lineTo(20,sh-12); x.stroke();
+    x.lineWidth=2.6;
+  } else if(k==='titan'){
+    x.lineWidth=3;
+    x.beginPath(); x.rect(-9,sh-8,18,20); x.stroke();
+    x.beginPath(); x.moveTo(-9,sh-4); x.lineTo(-17,sh+6); x.stroke();
+    x.beginPath(); x.moveTo(9,sh-4); x.lineTo(19,sh+2); x.stroke();
+    x.strokeStyle='#8fd8e8'; x.lineWidth=2.6;
+    x.beginPath(); x.arc(0,sh+2,4,0,7); x.stroke();
   } else if(k==='mage' || k==='frost'){
     x.beginPath(); x.moveTo(0,sh); x.lineTo(10,sh-2); x.stroke();
     x.beginPath(); x.moveTo(12,sh-16); x.lineTo(12,sh+8); x.stroke();
