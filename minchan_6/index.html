@@ -52,8 +52,9 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 
 #bottom{flex:0 0 auto;background:var(--slate);border-top:2px solid var(--line);
   padding:8px 8px calc(env(safe-area-inset-bottom) + 8px)}
-/* 여덟 칸이 됐다. 한 줄에 다 넣으면 폰에서 글자가 뭉개진다 — 네 칸씩 두 줄. */
-#units{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+/* 열 칸. 다섯 칸씩 두 줄이면 버튼 폭이 처음(5종 한 줄) 과 같아 글자가
+   뭉개지지 않고, 세 줄로 늘어나 전장을 깎아먹지도 않는다. */
+#units{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
 .ubtn{background:var(--slate2);border:2px solid var(--line);border-radius:4px;padding:6px 1px 4px;
   display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;position:relative}
 .ubtn:active{transform:translateY(2px)}
@@ -192,13 +193,6 @@ const STAGES = [
 ];
 /** 지금 판 (0부터). */
 let stageIx = 0;
-/**
- * 이 판에 들어올 때의 강화.
- *
- * 지면 이 판을 **들어올 때 상태로** 다시 시작한다. 3판을 맨몸으로 다시
- * 하게 만들면 본진 6500 을 깰 방법이 없다.
- */
-let entryUp = null;
 function stage(){ return STAGES[stageIx]; }
 
 const TYPES = {
@@ -223,29 +217,42 @@ const TYPES = {
 
   // 폭탄병 — 느리게 던지지만 떨어진 자리 44px 안의 적을 전부 때린다.
   // 뭉친 적을 푸는 열쇠. 한 명한테는 궁수보다 못하다.
-  bomber: {nm:'폭탄병', cost:200, hp:120, dmg:30, rng:180, spd:52, atk:2.20,size:54, gain:60, ranged:true, splash:44}
+  bomber: {nm:'폭탄병', cost:200, hp:120, dmg:30, rng:180, spd:52, atk:2.20,size:54, gain:60, ranged:true, splash:44},
+
+  /* ── 마법 ── */
+
+  // 빙결술사 — 얼음 폭풍. 폭탄과 같은 광역이지만 피해가 낮은 대신
+  // 맞은 적을 2.2초 동안 절반 속도로 만든다. 전선을 미는 쪽이 아니라
+  // 붙잡아 두는 쪽이다.
+  frost : {nm:'빙결술사', cost:180, hp:100, dmg:14, rng:190, spd:58, atk:2.40,size:52, gain:55, ranged:true, splash:52, slow:2.2},
+
+  // 마법사 — 연쇄 번개. 겨눈 적에서 가까운 적으로 네 번까지 튄다.
+  // 튈 때마다 피해가 20%씩 준다. 뭉친 줄을 한 번에 훑는 값비싼 한 방.
+  mage  : {nm:'마법사',   cost:240, hp:90,  dmg:26, rng:210, spd:56, atk:1.90,size:53, gain:70, chain:4, chainRng:78}
 };
-// 두 줄 × 네 칸. 대체로 싼 것부터다.
-const ORDER = ['miner','sword','archer','spear','shield','medic','bomber','giant'];
+// 두 줄 × 다섯 칸. 윗줄은 기본, 아랫줄은 비싼 것과 마법이다.
+const ORDER = ['miner','sword','archer','spear','shield','medic','frost','bomber','mage','giant'];
 
 let G, cam=0, camUser=0, last=0, dpr=1, cw=0, ch=0, scale=1, VIEW=620, gy=0;
 
+/**
+ * 판을 새로 연다.
+ *
+ * **판마다 완전히 처음부터다.** 강화도 넘기지 않는다 — 앞판에서 쌓은
+ * 강화를 들고 가면 뒷판이 앞판의 여운으로 풀려서, 판마다 다른 오프닝을
+ * 강요하려던 설계가 흐려진다. 시작 금액이 판마다 오르는 것으로 족하다.
+ */
 function newGame(){
   const S = stage();
-  entryUp = entryUp || {dmg:0,mine:0,turret:0,base:0};
-  const up = {...entryUp};
+  const up = {dmg:0,mine:0,turret:0,base:0};
   G = {
     gold:S.gold, t:0,
     baseA:{hp:S.baseA,max:S.baseA,x:BASE_A}, baseB:{hp:S.baseB,max:S.baseB,x:BASE_B},
-    units:[], shots:[], parts:[], texts:[], rain:[],
+    units:[], shots:[], parts:[], texts:[], rain:[], bolts:[],
     spawnT:2.5, bossT:S.bossEvery, ultCd:0, turretT:0,
     up,
     kills:0, mined:0, loot:0, over:false
   };
-  // **본진 보강은 다시 얹어야 한다.** 이 강화는 살 때 최대 체력을 올리는
-  // 방식이라, 판이 새로 시작하면 산 만큼이 조용히 사라진다.
-  G.baseA.max += up.base*300;
-  G.baseA.hp = G.baseA.max;
   cam = 0;
   banner((stageIx+1)+'판 · '+S.nm);
 }
@@ -265,7 +272,7 @@ function spawn(type, side, m){
     x: type==='miner' ? BASE_A-24 : (side==='a' ? BASE_A+22 : BASE_B-22),
     hp: T.hp*m.hp, max: T.hp*m.hp,
     dmg: T.dmg*m.dmg, size: T.size*(m.size||1),
-    cd:.3, ph:Math.random()*6, sw:0, dead:0, hurt:0,
+    cd:.3, ph:Math.random()*6, sw:0, dead:0, hurt:0, slowT:0,
     lane: lane, yo: (lane-3)*5,
     // 붙는 거리를 조금씩 달리한다. 전부 같은 지점에 서면 여럿이 겹쳐도
     // 한 사람처럼 보인다 — 이만큼 더 파고들어야 때린다.
@@ -341,11 +348,12 @@ function step(dt){
   for(const u of us){
     if(u.dead){ u.dead += dt; continue; }
     u.hurt = Math.max(0, u.hurt-dt);
+    if(u.slowT>0) u.slowT -= dt;
 
     /* --- 광부 --- */
     if(u.type==='miner'){
       if(u.job==='toMine'){
-        if(u.x > MINE_X+6){ u.x -= u.T.spd*dt; u.ph += dt*9; }
+        if(u.x > MINE_X+6){ u.x -= spdOf(u)*dt; u.ph += dt*9; }
         else { u.job='mining'; u.jobT=stage().mineT; }
       } else if(u.job==='mining'){
         u.jobT -= dt;
@@ -353,7 +361,7 @@ function step(dt){
         if(Math.random()<dt*9) puff(MINE_X+16, gy-30, '#e8b23a', 2);
         if(u.jobT<=0){ u.job='toBase'; u.carry=haul(); }
       } else {
-        if(u.x < BASE_A-22){ u.x += u.T.spd*dt; u.ph += dt*9; }
+        if(u.x < BASE_A-22){ u.x += spdOf(u)*dt; u.ph += dt*9; }
         else {
           G.gold += u.carry; G.mined += u.carry;
           float(u.x, gy-70, '+'+u.carry, '#c98f1a', 1.0);
@@ -393,7 +401,8 @@ function step(dt){
           }
           if(n) float(u.x, gy-u.size-6+u.yo, '+'+u.T.heal, '#7fd39b', .6);
         }
-        else if(u.T.ranged) shoot(u.x+dir*10, gy-u.size*.66+u.yo, tgt, dam, u.side, u.T.splash);
+        else if(u.T.chain) castChain(u, tgt, dam);
+        else if(u.T.ranged) shoot(u.x+dir*10, gy-u.size*.66+u.yo, tgt, dam, u.side, u.T.splash, u.T.slow);
         else if(u.T.pierce){
           // **앞쪽만** 꿴다. 거인의 광역은 양옆이지만 창은 방향이 있다.
           for(const o of us){
@@ -409,7 +418,7 @@ function step(dt){
           }
         }
         else hit(tgt, dam, u.x+dir*u.T.rng*.8);
-        beep(u.T.medic?740:(u.T.ranged?520:190),.05,.05);
+        beep(u.T.chain?1180:(u.T.medic?740:(u.T.ranged?520:190)),.05,.05);
       }
     } else {
       // **아군끼리는 막지 않는다.** 예전에는 같은 레인 앞 22px 안에 아군이
@@ -427,7 +436,7 @@ function step(dt){
         const gap=(o.x-u.x)*dir;
         if(gap>0 && gap<BODY_GAP){ blocked=true; break; }
       }
-      if(!blocked){ u.x += dir*u.T.spd*dt; u.ph += dt*9; }
+      if(!blocked){ u.x += dir*spdOf(u)*dt; u.ph += dt*9; }
     }
     u.sw = Math.max(0, u.sw - dt*3.4);
   }
@@ -443,9 +452,11 @@ function step(dt){
         // 떨어진 자리를 친다. 겨눈 적이 이미 죽었어도 폭발은 일어난다.
         for(const o of G.units){
           if(o.side===s.side||o.dead) continue;
-          if(Math.abs(o.x-s.x) <= s.splash) hit(o, s.dmg, s.x);
+          if(Math.abs(o.x-s.x) > s.splash) continue;
+          hit(o, s.dmg, s.x);
+          if(s.slow) o.slowT = s.slow;   // 얼린다
         }
-        puff(s.x,s.y,'#e8b23a',12);
+        puff(s.x,s.y, s.slow?'#9fe0ff':'#e8b23a', s.slow?16:12);
       }
       else if(s.tgt && !s.tgt.dead) hit(s.tgt, s.dmg, s.x);
       puff(s.x,s.y,'#1b2430',4);
@@ -476,6 +487,8 @@ function step(dt){
     if(p.y>gy){ p.y=gy; p.life=Math.min(p.life,.1); }
   }
   G.parts = G.parts.filter(p=>p.life>0);
+  for(const b of G.bolts) b.t -= dt;
+  G.bolts = G.bolts.filter(b=>b.t>0);
   for(const t of G.texts){ t.life-=dt; t.y -= 34*dt; }
   G.texts = G.texts.filter(t=>t.life>0);
   G.units = G.units.filter(u=>u.dead < 1.3);
@@ -513,10 +526,62 @@ function hit(t,d,at){
     puff(t.x + (t===G.baseA?26:-26), gy-70, '#6b7785', 6);
   }
 }
-function shoot(x,y,tgt,dmg,side,splash){
+function shoot(x,y,tgt,dmg,side,splash,slow){
   const tx=tgt.x, ty=tgt.T?gy-tgt.size*.6+tgt.yo:gy-70;
   const dist=Math.hypot(tx-x,ty-y);
-  G.shots.push({x0:x,y0:y,x,y,tx,ty,tgt,dmg,side,splash,t:0,dur:Math.max(.22,dist/620)});
+  G.shots.push({x0:x,y0:y,x,y,tx,ty,tgt,dmg,side,splash,slow,t:0,dur:Math.max(.22,dist/620)});
+}
+
+/** 지금 낼 수 있는 속도. 얼어 있으면 절반이다. */
+function spdOf(u){ return u.T.spd * (u.slowT>0 ? .5 : 1); }
+
+/**
+ * 연쇄 번개.
+ *
+ * 겨눈 적에서 가까운 적으로 튄다. 이미 맞은 적에게는 다시 튀지 않는다 —
+ * 안 그러면 둘 사이를 오가며 같은 둘만 네 번 때린다.
+ *
+ * 자국(`G.bolts`)은 **칠 때 한 번만** 지그재그를 만들어 저장한다. 매 프레임
+ * 새로 흔들면 번개가 부들부들 떠는 그림이 된다.
+ */
+function castChain(u, first, dam){
+  const yOf = o => o.T ? gy - o.size*.55 + o.yo : gy - 70;
+  const nodes = [{x:u.x, y:gy - u.size*.72 + u.yo}];
+  const struck = new Set();
+  let cur = first, d = dam;
+
+  for(let i=0; i<u.T.chain && cur; i++){
+    struck.add(cur);
+    nodes.push({x:cur.x, y:yOf(cur)});
+    hit(cur, d, cur.x);
+    puff(cur.x, yOf(cur), '#bfe6ff', 7);
+    d *= .8;
+
+    let next=null, best=1e9;
+    for(const o of G.units){
+      if(o.side===u.side || o.dead || struck.has(o)) continue;
+      const dd = Math.abs(o.x - cur.x);
+      if(dd <= u.T.chainRng && dd < best){ best=dd; next=o; }
+    }
+    cur = next;
+  }
+  if(nodes.length > 1) G.bolts.push({path: jagged(nodes), t:.30, max:.30});
+}
+
+/** 마디 사이를 지그재그로 쪼갠다. 끝점은 흔들지 않는다 — 대상에서 어긋난다. */
+function jagged(nodes){
+  const out=[nodes[0]];
+  for(let i=0;i<nodes.length-1;i++){
+    const a=nodes[i], b=nodes[i+1], seg=5;
+    for(let k=1;k<=seg;k++){
+      const t=k/seg, last=(k===seg);
+      out.push({
+        x: a.x+(b.x-a.x)*t + (last?0:(Math.random()-.5)*15),
+        y: a.y+(b.y-a.y)*t + (last?0:(Math.random()-.5)*15),
+      });
+    }
+  }
+  return out;
 }
 function puff(x,y,c,n){
   for(let i=0;i<n;i++) G.parts.push({x,y,vx:(Math.random()-.5)*130,vy:-Math.random()*150-30,life:.35+Math.random()*.25,c,s:2+Math.random()*2});
@@ -537,8 +602,6 @@ function finish(win){
   else note = STAGES[stageIx].tip;
   document.getElementById('overS').innerHTML = stats + '<br>' + note;
 
-  // 이긴 판의 강화를 다음 판으로 넘긴다. 진 판은 들어올 때 상태 그대로 둔다.
-  if(win) entryUp = {...G.up};
   document.getElementById('again').textContent =
     win ? (last ? '처음부터' : '다음 전장 ▶') : '다시 시작';
   document.getElementById('over').classList.add('on');
@@ -587,6 +650,20 @@ function draw(){
   drawBase(G.baseA,'a');
   drawBase(G.baseB,'b');
   for(const u of [...G.units].sort((a,b)=>(a.yo-b.yo)||(a.size-b.size))) drawUnit(u);
+
+  /* 연쇄 번개. 굵은 하늘빛 위에 흰 심을 겹쳐 빛나 보이게 한다 */
+  for(const b of G.bolts){
+    const a = b.t/b.max;
+    ctx.globalAlpha = a;
+    ctx.lineCap='round'; ctx.lineJoin='round';
+    for(const pass of [[7.5,'#5fb8ff'],[3.4,'#bfe6ff'],[1.4,'#ffffff']]){
+      ctx.lineWidth=pass[0]; ctx.strokeStyle=pass[1];
+      ctx.beginPath();
+      b.path.forEach((q,i)=> i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
 
   ctx.lineWidth=2.2; ctx.strokeStyle='#1b2430';
   for(const s of G.shots){
@@ -721,6 +798,27 @@ function drawUnit(u){
     ctx.beginPath(); ctx.moveTo(h*.2,shY-h*.3); ctx.lineTo(h*.2,shY-h*.04); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(h*.07,shY-h*.17); ctx.lineTo(h*.33,shY-h*.17); ctx.stroke();
     ctx.strokeStyle=col; ctx.lineWidth=lw;
+  } else if(u.type==='mage' || u.type==='frost'){
+    const magic = u.type==='mage' ? '#bfe6ff' : '#7fd0ff';
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(-h*.17,shY+h*.13); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(hx*.8,hy*.98); ctx.stroke();
+    /* 지팡이 */
+    const sx=hx*.8, sy=hy*.98;
+    ctx.beginPath(); ctx.moveTo(sx,sy-h*.38); ctx.lineTo(sx,sy+h*.34); ctx.stroke();
+    /* 끝의 빛. 시전할수록(sw) 커진다 */
+    ctx.strokeStyle=magic; ctx.lineWidth=lw*.9;
+    const rr = h*.09*(1+sw*.9);
+    ctx.beginPath(); ctx.arc(sx, sy-h*.38, rr, 0, 7); ctx.stroke();
+    if(u.type==='frost'){
+      for(let i=0;i<3;i++){
+        const a=i*Math.PI/3;
+        ctx.beginPath();
+        ctx.moveTo(sx-Math.cos(a)*rr*1.7, sy-h*.38-Math.sin(a)*rr*1.7);
+        ctx.lineTo(sx+Math.cos(a)*rr*1.7, sy-h*.38+Math.sin(a)*rr*1.7);
+        ctx.stroke();
+      }
+    }
+    ctx.strokeStyle=col; ctx.lineWidth=lw;
   } else if(u.type==='bomber'){
     ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(-h*.18,shY+h*.12); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(hx,hy); ctx.stroke();
@@ -745,6 +843,19 @@ function drawUnit(u){
     ctx.lineWidth=lw;
   }
   ctx.restore();
+
+  if(!u.dead && u.slowT>0){
+    /* 얼었다는 것이 몸이 아니라 발밑에 보여야 한다. 몸 색을 바꾸면
+       아군·적군 구분이 흐려진다. */
+    ctx.save();
+    ctx.strokeStyle='#7fd0ff'; ctx.lineWidth=2; ctx.globalAlpha=.85;
+    const w=h*.22;
+    ctx.beginPath();
+    ctx.moveTo(u.x-w, gy+u.yo); ctx.lineTo(u.x+w, gy+u.yo);
+    ctx.moveTo(u.x-w*.6, gy+u.yo-4); ctx.lineTo(u.x+w*.6, gy+u.yo-4);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   if(!u.dead && u.hp<u.max){
     const w=h*.5, r=u.hp/u.max;
@@ -815,6 +926,20 @@ function iconOf(c,k){
     x.beginPath(); x.moveTo(13,sh-14); x.lineTo(13,sh-1); x.stroke();
     x.beginPath(); x.moveTo(7,sh-8); x.lineTo(19,sh-8); x.stroke();
     x.lineWidth=2.6;
+  } else if(k==='mage' || k==='frost'){
+    x.beginPath(); x.moveTo(0,sh); x.lineTo(10,sh-2); x.stroke();
+    x.beginPath(); x.moveTo(12,sh-16); x.lineTo(12,sh+8); x.stroke();
+    x.strokeStyle = k==='mage' ? '#bfe6ff' : '#7fd0ff'; x.lineWidth=2.2;
+    x.beginPath(); x.arc(12,sh-18,5,0,7); x.stroke();
+    if(k==='frost'){
+      for(let i=0;i<3;i++){ const a=i*Math.PI/3;
+        x.beginPath();
+        x.moveTo(12-Math.cos(a)*8, sh-18-Math.sin(a)*8);
+        x.lineTo(12+Math.cos(a)*8, sh-18+Math.sin(a)*8); x.stroke(); }
+    } else {
+      x.beginPath(); x.moveTo(6,sh-26); x.lineTo(12,sh-20); x.lineTo(8,sh-18); x.lineTo(16,sh-10); x.stroke();
+    }
+    x.lineWidth=2.6;
   } else if(k==='bomber'){
     x.beginPath(); x.moveTo(0,sh); x.lineTo(10,sh-3); x.stroke();
     x.beginPath(); x.arc(15,sh-6,6,0,7); x.stroke();
@@ -876,10 +1001,10 @@ document.getElementById('closeUp').addEventListener('click',()=>modal.classList.
 document.getElementById('again').addEventListener('click',()=>{
   const won = G.baseB.hp<=0;
   if(won){
-    if(stageIx >= STAGES.length-1){ stageIx = 0; entryUp = null; }  // 전역 완료 — 처음부터
+    if(stageIx >= STAGES.length-1) stageIx = 0;  // 전역 완료 — 처음부터
     else stageIx += 1;
   }
-  // 진 경우에는 판도 강화도 그대로다. 들어올 때 상태로 이 판을 다시 한다.
+  // 지면 같은 판을 다시 한다. 어느 쪽이든 강화는 초기화다.
   document.getElementById('over').classList.remove('on'); newGame();
 });
 
