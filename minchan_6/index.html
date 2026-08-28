@@ -896,12 +896,19 @@ function blowUp(u, dam, dir){
 }
 
 /** 앞쪽 직선을 훑는다. 광역 능력들이 공유한다. */
-function lineHit(u, dir, reach, dam, nearMul, nearAt){
+/**
+ * 앞쪽 직선을 훑는다. 광역 능력들이 공유한다.
+ *
+ * `noBase` 를 주면 본진은 건드리지 않는다 — 사거리가 아주 긴 기술이
+ * 전선을 지나지 않고 성만 깎는 것을 막을 때 쓴다.
+ */
+function lineHit(u, dir, reach, dam, nearMul, nearAt, noBase){
   for(const o of G.units){
     if(o.side===u.side||o.dead) continue;
     const off=(o.x-u.x)*dir;
     if(off > -40 && off < reach) hit(o, dam*(nearAt && off<nearAt ? nearMul : (nearAt?0.7:1)), o.x);
   }
+  if(noBase) return;
   const b = u.side==='a' ? G.baseB : G.baseA;
   const boff=(b.x-u.x)*dir;
   if(b.hp>0 && boff > -40 && boff < reach) hit(b, dam*(nearAt && boff<nearAt ? nearMul : (nearAt?0.7:1)), b.x);
@@ -933,8 +940,16 @@ function titanCombo(u, dam, dir){
   const stage = (u.combo|0) % 3;
   u.combo = (u.combo|0) + 1;
   u.lastStage = stage;          // 그림이 지금 어느 동작인지 알아야 한다
+
+  // **1v1 에서는 레이저(520)와 코어 빔(780)이 성을 깎지 않는다.**
+  //
+  // 사거리가 전장의 절반을 넘어서, 타이탄 하나를 세워 두면 전선을 만들지
+  // 않고 상대 성만 녹인다. 사람이 상대일 때는 그게 싸움이 아니라 봉쇄다.
+  // 대검(230)은 전선까지 걸어와야 닿으므로 그대로 둔다.
+  const duel = net.on && net.ready;
+
   if(stage===0){
-    lineHit(u, dir, 520, dam*.75);
+    lineHit(u, dir, 520, dam*.75, undefined, undefined, duel);
     G.beams.push({x1:u.x+dir*u.size*.28, x2:u.x+dir*520, y:gy-u.size*.60+u.yo,
       life:.26, max:.26, c1:'rgba(255,90,70,.45)', c2:'#ffd9c8', w:16});
     G.shake=.14; beep(1400,.16,.05);
@@ -945,7 +960,7 @@ function titanCombo(u, dam, dir){
     puff(u.x+dir*150, gy-16, '#8a94a3', 26);
     G.shake=.45; beep(70,.4,.085);
   } else {
-    lineHit(u, dir, 780, dam*2.1);
+    lineHit(u, dir, 780, dam*2.1, undefined, undefined, duel);
     G.beams.push({x1:u.x, x2:u.x+dir*780, y:gy-u.size*.52+u.yo,
       life:.55, max:.55, c1:'rgba(120,240,255,.5)', c2:'#f2ffff', w:70});
     G.beams.push({x1:u.x, x2:u.x+dir*780, y:gy-u.size*.52+u.yo,
