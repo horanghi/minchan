@@ -14,9 +14,16 @@ import { Server, routePartykitRequest } from "partyserver";
 /** 자리 둘. 먼저 온 쪽이 호스트다. */
 const SEATS = ["a", "b"];
 
+/** 방 목록을 들고 있는 전역 등록소 하나. */
+const LOBBY_KEY = "global";
+/** 방 DO 가 갑자기 사라지면 목록에 유령이 남는다. 이 시간 넘으면 지운다. */
+const ROOM_TTL_MS = 90_000;
+
 export class StickmanRoom extends Server {
   // 연결 id → 자리
   seats = new Map();
+  // 등록소에 마지막으로 알린 인원. 같은 값을 되풀이해 보내지 않는다.
+  lastReported = -1;
 
   /** 지금 앉아 있는 자리들. */
   taken() {
@@ -53,6 +60,26 @@ export class StickmanRoom extends Server {
   announce() {
     const n = this.seats.size;
     this.broadcast(JSON.stringify({ type: "room", players: n, ready: n === 2 }));
+    this.reportToLobby(n);
+  }
+
+  /**
+   * 등록소에 지금 인원을 알린다.
+   *
+   * **등록소가 죽어도 대전은 계속돼야 한다.** 목록은 편의일 뿐이라, 여기서
+   * 던지는 예외가 판을 끊으면 안 된다.
+   */
+  reportToLobby(players) {
+    if (players === this.lastReported) return;
+    this.lastReported = players;
+    try {
+      const stub = this.env.Lobby.get(this.env.Lobby.idFromName(LOBBY_KEY));
+      this.ctx.waitUntil(
+        stub.updateRoom({ code: String(this.name || "").toUpperCase(), players }),
+      );
+    } catch {
+      /* 등록소 장애는 무시한다 */
+    }
   }
 
   onMessage(sender, raw) {
@@ -89,6 +116,84 @@ export class StickmanRoom extends Server {
     for (const conn of this.getConnections()) {
       if (conn.id !== sender.id) conn.send(raw);
     }
+  }
+}
+
+/**
+ * 방 등록소 — 지금 열려 있는 방 목록.
+ *
+ * 코드를 받아 적지 않아도 첫 화면에서 눌러 들어갈 수 있게 하려는 것뿐이다.
+ * 여기가 죽어도 코드를 아는 사람끼리는 그대로 붙는다.
+ */
+export class Lobby extends Server {
+  rooms = null;
+
+  async load() {
+    if (!this.rooms) this.rooms = (await this.ctx.storage.get("rooms")) || {};
+    return this.rooms;
+  }
+  async onStart() {
+    await this.load();
+  }
+
+  async onConnect(conn) {
+    await this.load();
+    conn.send(JSON.stringify({ type: "rooms", rooms: this.publicList() }));
+  }
+
+  async onMessage(sender, raw) {
+    let m;
+    try {
+      m = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (m && m.type === "list") {
+      await this.load();
+      sender.send(JSON.stringify({ type: "rooms", rooms: this.publicList() }));
+    }
+  }
+
+  /** 방 DO 가 RPC 로 부른다. DO 직접 호출이라 onStart 가 안 돌 수 있어 load() 로 막는다. */
+  async updateRoom(info) {
+    await this.load();
+    const code = info && info.code;
+    if (!code) return;
+    if (info.players > 0) {
+      this.rooms[code] = { code, players: info.players, updatedAt: Date.now() };
+    } else {
+      delete this.rooms[code];
+    }
+    this.prune();
+    await this.ctx.storage.put("rooms", this.rooms);
+    this.broadcastList();
+  }
+
+  /** 방 DO 가 갑자기 사라져 남은 유령 항목을 걷어낸다. */
+  prune() {
+    const cutoff = Date.now() - ROOM_TTL_MS;
+    for (const [code, r] of Object.entries(this.rooms)) {
+      if (!r || !r.players || r.updatedAt < cutoff) delete this.rooms[code];
+    }
+  }
+
+  /**
+   * 보여줄 목록.
+   *
+   * **한 명 기다리는 방만 낸다.** 둘이 찬 방을 목록에 두면 눌러도 "이미
+   * 둘이다" 로 튕긴다 — 눌러서 안 되는 버튼은 없는 것만 못하다.
+   */
+  publicList() {
+    return Object.values(this.rooms || {})
+      .filter((r) => r && r.players === 1)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 20)
+      .map((r) => ({ code: r.code, players: r.players }));
+  }
+
+  broadcastList() {
+    const msg = JSON.stringify({ type: "rooms", rooms: this.publicList() });
+    for (const c of this.getConnections()) c.send(msg);
   }
 }
 

@@ -8,11 +8,20 @@
   // party 이름("room")과 매칭된다 — routePartykitRequest 가 /parties/:party/:room
   // 의 :party 를 바인딩 이름과 대소문자 무시로 맞춘다.
   "durable_objects": {
-    "bindings": [{ "name": "Room", "class_name": "StickmanRoom" }]
+    "bindings": [
+      { "name": "Room", "class_name": "StickmanRoom" },
+      // 방 목록 등록소(전역 하나). 클라이언트는 party "lobby" 로 붙는다.
+      { "name": "Lobby", "class_name": "Lobby" }
+    ]
   },
 
   // 무료 플랜의 Durable Objects 는 SQLite 백엔드를 쓴다.
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["StickmanRoom"] }],
+  // 이미 배포된 v1 은 **그대로 둔다.** 새 클래스는 v2 로 덧붙여야 한다 —
+  // v1 을 고치면 이미 만들어진 Durable Object 와 어긋난다.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["StickmanRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["Lobby"] }
+  ],
 
   "observability": { "enabled": true }
 }

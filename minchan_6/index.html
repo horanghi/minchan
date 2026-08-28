@@ -116,6 +116,14 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #lobby input{background:#0b1016;border:2px solid var(--line);color:#e6edf3;font-weight:800;
   font-size:22px;letter-spacing:6px;text-align:center;width:150px;padding:10px;border-radius:5px;
   text-transform:uppercase;font-family:'Gaegu',cursive}
+#rooms{display:flex;flex-direction:column;gap:6px;width:100%;max-width:280px;max-height:168px;overflow-y:auto}
+#rooms .rm{display:flex;align-items:center;gap:10px;background:var(--slate2);
+  border:2px solid var(--line);border-radius:5px;padding:9px 12px;cursor:pointer;
+  color:#e6edf3;font-weight:800;min-width:0}
+#rooms .rm:active{transform:translateY(2px)}
+#rooms .rm .c{font-family:'Gaegu',cursive;font-size:24px;letter-spacing:5px;color:var(--gold)}
+#rooms .rm .w{flex:1;text-align:right;font-size:11px;color:#8ea0b2;font-weight:700}
+#rooms .none{color:#6c7d8d;font-size:12px;padding:6px 2px}
 #lobbyMsg{color:#8ea0b2;font-size:12px;min-height:18px;max-width:300px;line-height:1.6}
 /* 실패는 실패로 보여야 한다. 작은 회색 글씨로 두면 "됐는데 뭔가 이상하다" 가 된다. */
 #lobbyMsg.err{color:#e0605c;font-size:13px;font-weight:700}
@@ -166,6 +174,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   <div class="sub">혼자 할까, 친구와 붙을까</div>
   <button id="btnSolo" class="go">혼자 하기</button>
   <button id="btnHost">방 만들기</button>
+  <div id="rooms"><div class="none">열린 방을 찾는 중…</div></div>
   <div class="row">
     <input id="joinCode" maxlength="4" placeholder="코드" inputmode="latin" autocomplete="off">
     <button id="btnJoin" style="min-width:96px">참가</button>
@@ -1265,6 +1274,50 @@ const net = {
   close(){ if(this.sock){ try{ this.sock.close(); }catch(_){} } this.sock=null; this.on=false; this.ready=false; this.seated=false; },
 };
 
+/**
+ * 방 목록.
+ *
+ * 코드를 받아 적지 않아도 눌러서 들어가려는 것뿐이다. **이게 안 되어도
+ * 코드로 붙는 길은 그대로 열려 있어야 한다** — 목록은 편의고 코드가 본선이다.
+ */
+let lobbySock = null;
+function watchRooms(){
+  if(lobbySock) return;
+  const scheme = location.protocol==='https:' ? 'wss' : 'ws';
+  try{
+    lobbySock = new WebSocket(scheme+'://'+NET_HOST+'/parties/lobby/global');
+  }catch(_){ return; }
+  lobbySock.onmessage = ev => {
+    let m; try{ m=JSON.parse(ev.data); }catch{ return; }
+    if(m.type==='rooms') renderRooms(m.rooms);
+  };
+  lobbySock.onclose = () => { lobbySock=null; };
+  lobbySock.onerror = () => { renderRooms(null); };
+}
+
+function renderRooms(list){
+  const box=document.getElementById('rooms');
+  if(!box) return;
+  if(!list){ box.innerHTML='<div class="none">방 목록을 받지 못했다. 코드로는 들어갈 수 있다.</div>'; return; }
+  // **내가 만든 방은 빼고 보여준다.** 눌러 봐야 내 방에 다시 붙을 뿐이고,
+  // 그 사이 자리가 비었다 차면서 혼자 두 자리를 잡는 길이 열린다.
+  const others = list.filter(r => !(net.on && r.code===net.room));
+  if(!others.length){
+    box.innerHTML = (net.on && net.room)
+      ? '<div class="none">다른 방은 없다. 상대가 코드로 들어오면 시작한다.</div>'
+      : '<div class="none">기다리는 방이 없다. 방을 만들어 보자.</div>';
+    return;
+  }
+  box.innerHTML='';
+  for(const r of others){
+    const b=document.createElement('button');
+    b.className='rm';
+    b.innerHTML='<span class="c">'+r.code+'</span><span class="w">한 명 기다림 · 참가 ▸</span>';
+    b.addEventListener('click', ()=>connect(r.code));
+    box.appendChild(b);
+  }
+}
+
 function roomCode(){
   const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // 헷갈리는 글자(I,O,0,1)는 뺀다
   let c=''; for(let i=0;i<4;i++) c+=A[Math.floor(Math.random()*A.length)];
@@ -1382,7 +1435,10 @@ function lobbyStatus(t, bad){
   e.classList.toggle('err', !!bad);
 }
 function closeLobby(){ document.getElementById('lobby').classList.add('off'); }
-function openLobby(){ document.getElementById('lobby').classList.remove('off'); }
+function openLobby(){
+  document.getElementById('lobby').classList.remove('off');
+  watchRooms();
+}
 
 /** 버튼이 누르는 창구. 게스트면 주문만 올리고 지갑은 건드리지 않는다. */
 function order(k){
