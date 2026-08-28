@@ -105,7 +105,9 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #lobby input{background:#0b1016;border:2px solid var(--line);color:#e6edf3;font-weight:800;
   font-size:22px;letter-spacing:6px;text-align:center;width:150px;padding:10px;border-radius:5px;
   text-transform:uppercase;font-family:'Gaegu',cursive}
-#lobbyMsg{color:#8ea0b2;font-size:12px;min-height:18px}
+#lobbyMsg{color:#8ea0b2;font-size:12px;min-height:18px;max-width:300px;line-height:1.6}
+/* 실패는 실패로 보여야 한다. 작은 회색 글씨로 두면 "됐는데 뭔가 이상하다" 가 된다. */
+#lobbyMsg.err{color:#e0605c;font-size:13px;font-weight:700}
 #lobbyCode{font-family:'Gaegu',cursive;font-size:44px;font-weight:700;letter-spacing:10px;color:#e8b23a}
 #over{position:fixed;inset:0;background:rgba(6,10,14,.93);display:none;flex-direction:column;
   align-items:center;justify-content:center;gap:6px;z-index:30;padding:20px;text-align:center}
@@ -204,6 +206,17 @@ const BODY_GAP = 14;
  * 한쪽만 고치면 게이지가 실제 남은 시간과 어긋난 채로 돈다.
  */
 const ULT_CD = 14;
+/**
+ * 1v1 의 본진 체력. **양쪽이 같아야 한다.**
+ *
+ * 1인 판은 내 본진 1500 · 적 본진 4000 으로 일부러 기울어져 있다 — 버티면서
+ * 두꺼운 적 본진을 깎는 판이다. 그 값을 그대로 두면 호스트는 1500, 게스트는
+ * 4000 을 들고 붙는다. 대전이 아니라 처형이다.
+ *
+ * 1인 판의 두 값 사이에서 잡았다. 너무 얇으면 초반 러시 한 번에 끝나고,
+ * 4000 이면 광부만 늘리다 한참 뒤에야 싸움이 붙는다.
+ */
+const DUEL_BASE_HP = 2500;
 /**
  * 전장 셋.
  *
@@ -1215,9 +1228,9 @@ const NET_HOST = location.hostname==='localhost' || location.hostname==='127.0.0
 const SNAP_MS = 80;
 
 const net = {
-  on:false, host:false, sock:null, room:'', ready:false, snapT:0, err:'',
+  on:false, host:false, seated:false, sock:null, room:'', ready:false, snapT:0, err:'',
   send(o){ if(this.sock && this.sock.readyState===1) this.sock.send(JSON.stringify(o)); },
-  close(){ if(this.sock){ try{ this.sock.close(); }catch(_){} } this.sock=null; this.on=false; this.ready=false; },
+  close(){ if(this.sock){ try{ this.sock.close(); }catch(_){} } this.sock=null; this.on=false; this.ready=false; this.seated=false; },
 };
 
 function roomCode(){
@@ -1228,6 +1241,9 @@ function roomCode(){
 
 function connect(code){
   net.close();
+  // **아직 방 코드를 보여주지 않는다.** 붙기도 전에 코드를 크게 띄우면
+  // 실패해도 만들어진 것처럼 보인다 — 실제로 그렇게 읽혔다.
+  document.getElementById('lobbyCode').textContent = '';
   net.room = code;
   net.on = true;
   net.err = '';
@@ -1237,11 +1253,16 @@ function connect(code){
   lobbyStatus('연결 중…');
 
   sock.onopen = () => lobbyStatus('상대를 기다리는 중…');
-  sock.onerror = () => { net.err='서버에 붙지 못했다'; lobbyStatus(net.err); };
+  sock.onerror = () => {
+    net.err = '대전 서버가 아직 안 올라갔다.\n혼자 하기는 그대로 된다.';
+    lobbyStatus(net.err, true);
+  };
   sock.onclose = () => {
     if(!net.on) return;
     net.ready=false;
-    banner('상대와 연결이 끊겼다');
+    // 한 번도 자리를 못 받았으면 서버가 없는 것이다. 판이 끊긴 게 아니다.
+    if(!net.seated) lobbyStatus(net.err || '대전 서버에 붙지 못했다.', true);
+    else banner('상대와 연결이 끊겼다');
     net.on=false;
   };
   sock.onmessage = ev => {
@@ -1249,7 +1270,10 @@ function connect(code){
     if(m.type==='full'){ net.err='그 방은 이미 둘이다'; lobbyStatus(net.err); net.on=false; return; }
     if(m.type==='seat'){
       net.host = m.host;
+      net.seated = true;
       ME = m.seat;
+      // 여기서야 방이 실제로 생겼다. 이제 코드를 보여준다.
+      document.getElementById('lobbyCode').textContent = code;
       lobbyStatus(net.host ? '방 코드 '+code+' — 상대를 기다린다' : '들어갔다. 시작을 기다린다');
       return;
     }
@@ -1265,6 +1289,9 @@ function connect(code){
       if(m.ready && !net.ready){
         net.ready = true;
         stageIx = 0; newGame();
+        // 양쪽 본진을 같게 맞춘다. 1인 판의 기울어진 값을 그대로 쓰면
+        // 자리에 따라 이길 수 없는 판이 된다.
+        for(const b of [G.baseA, G.baseB]){ b.max = DUEL_BASE_HP; b.hp = DUEL_BASE_HP; }
         closeLobby();
         banner(net.host ? '대전 시작 — 당신은 파랑' : '대전 시작 — 당신은 빨강');
       }
@@ -1315,7 +1342,12 @@ function applySnap(m){
 }
 let overShown=false;
 
-function lobbyStatus(t){ const e=document.getElementById('lobbyMsg'); if(e) e.textContent=t||''; }
+function lobbyStatus(t, bad){
+  const e=document.getElementById('lobbyMsg');
+  if(!e) return;
+  e.textContent = t||'';
+  e.classList.toggle('err', !!bad);
+}
 function closeLobby(){ document.getElementById('lobby').classList.add('off'); }
 function openLobby(){ document.getElementById('lobby').classList.remove('off'); }
 
@@ -1328,15 +1360,10 @@ function order(k){
 document.getElementById('btnSolo').addEventListener('click',()=>{
   net.close(); ME='a'; stageIx=0; newGame(); closeLobby();
 });
-document.getElementById('btnHost').addEventListener('click',()=>{
-  const c=roomCode();
-  document.getElementById('lobbyCode').textContent=c;
-  connect(c);
-});
+document.getElementById('btnHost').addEventListener('click',()=>{ connect(roomCode()); });
 document.getElementById('btnJoin').addEventListener('click',()=>{
   const c=(document.getElementById('joinCode').value||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
-  if(c.length<4){ lobbyStatus('코드 네 글자를 넣어라'); return; }
-  document.getElementById('lobbyCode').textContent=c;
+  if(c.length<4){ lobbyStatus('코드 네 글자를 넣어라', true); return; }
   connect(c);
 });
 
