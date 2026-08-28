@@ -372,6 +372,7 @@ function newGame(){
   };
   cam = 0;
   overShown = false;
+  seen.clear(); snapAt = 0;
   banner((stageIx+1)+'판 · '+S.nm);
 }
 
@@ -612,8 +613,15 @@ function step(dt){
       const n = Math.max(3, Math.round(VIEW/113));
       for(let i=0;i<n;i++) G.parts.push({x:cam+Math.random()*VIEW, y:gy-260, vx:0, vy:640, life:.42, c:'#1b2430', s:9, arrow:1});
       // 피해는 자리를 가리지 않는다. 화면 밖의 적도 맞는다.
+      //
+      // **광부는 뺀다.** 전 영역으로 바꾼 뒤로 화살비 한 번이 상대 광산까지
+      // 닿아, 싸움이 아니라 상대 경제를 지우는 버튼이 됐다. 광부는 무기가
+      // 없고 전선에도 오지 않는다 — 때릴 이유가 없다.
       const rs = r.side || 'a';
-      for(const u of G.units) if(u.side!==rs && !u.dead) hit(u, 16*dmgMul(rs), u.x);
+      for(const u of G.units){
+        if(u.side===rs || u.dead || u.type==='miner') continue;
+        hit(u, 16*dmgMul(rs), u.x);
+      }
     }
     if(r.t<=0) r.done=1;
   }
@@ -1175,8 +1183,10 @@ function buyUp(k, side){
 }
 
 const uplist=document.getElementById('uplist');
+let upRows=[], upSig='';
 function renderUps(){
-  uplist.innerHTML='';
+  uplist.innerHTML=''; upRows=[];
+  upSig = UPS.map(u=>W(ME).up[u.k]).join(',');
   UPS.forEach(u=>{
     const lv=W(ME).up[u.k], cost=u.c(lv);
     const row=document.createElement('div');
@@ -1188,8 +1198,27 @@ function renderUps(){
       if(net.on && net.ready && !net.host){ net.send({type:'cmd', what:'up', k:u.k}); return; }
       if(buyUp(u.k, ME)){ beep(740,.1,.04); renderUps(); }
     });
+    upRows.push({ cost, btn:b });
     row.appendChild(b); uplist.appendChild(row);
   });
+}
+
+/**
+ * 열어 둔 팝업이 금을 따라가게 한다.
+ *
+ * 열 때 한 번만 그려서, 보고 있는 동안 광부가 금을 날라 와도 버튼이 잠긴
+ * 채였다. 닫았다 다시 열어야 풀렸다.
+ *
+ * 매 프레임 DOM 을 새로 만들지는 않는다 — 누르는 도중에 버튼이 갈리면
+ * 탭이 씹힌다. 값이 바뀐 것만 손본다.
+ */
+function syncUps(){
+  if(!modal.classList.contains('on')) return;
+  const gold = W(ME).gold;
+  for(const r of upRows) r.btn.disabled = gold < r.cost;
+  // 레벨이 바뀌면(내가 샀든 1v1 에서 호스트가 처리했든) 값과 설명을 다시 그린다.
+  const sig = UPS.map(u=>W(ME).up[u.k]).join(',');
+  if(sig !== upSig){ upSig = sig; renderUps(); }
 }
 const modal=document.getElementById('modal');
 document.getElementById('upBtn').addEventListener('click',()=>{ renderUps(); modal.classList.add('on'); });
@@ -1403,8 +1432,10 @@ function snapshot(){
     ga:Math.round(W('a').gold), gb:Math.round(W('b').gold),
     ua:W('a').up, ub:W('b').up,
     ca:+W('a').rainCd.toFixed(1), cb:+W('b').rainCd.toFixed(1),
+    // id 를 맨 앞에 싣는다. 이게 있어야 게스트가 **같은 유닛을 알아보고**
+    // 자리를 이어 붙일 수 있다. 없으면 스냅샷마다 새로 만들어 순간이동한다.
     u:G.units.map(u=>[
-      u.type, u.side==='a'?0:1, Math.round(u.x), u.yo, Math.round(u.hp), Math.round(u.max),
+      u.id, u.type, u.side==='a'?0:1, Math.round(u.x), u.yo, Math.round(u.hp), Math.round(u.max),
       +u.dead.toFixed(2), +u.hurt.toFixed(2), +u.sw.toFixed(2), +u.ph.toFixed(1),
       u.job==='toMine'?0:(u.job==='mining'?1:2), Math.round(u.carry), +(u.slowT||0).toFixed(1),
     ]),
@@ -1412,19 +1443,63 @@ function snapshot(){
 }
 
 /** 받은 상태를 그대로 그릴 수 있는 모양으로 편다. */
+/**
+ * 게스트가 스냅샷을 받는다.
+ *
+ * **유닛 객체를 다시 만들지 않는다.** 예전에는 스냅샷마다 통째로 새로
+ * 만들어서, 초당 12번씩 200개 객체가 버려졌고 무엇보다 **자리가 순간이동**
+ * 했다. 60fps 로 그리는데 위치는 12.5번만 갱신되니 뚝뚝 끊겨 보인다 —
+ * "느리다" 로 읽히던 것이 이것이다.
+ *
+ * id 로 같은 유닛을 찾아 값만 갈아 끼우고, 이전 자리(`x0`)와 새 자리(`x1`)를
+ * 남겨 둔다. 그 사이는 `lerpGuest()` 가 프레임마다 메운다.
+ */
+const seen = new Map();          // id → 유닛
+let snapAt = 0, snapGap = SNAP_MS;
+
 function applySnap(m){
+  const now = performance.now();
+  // 실제로 온 간격을 쓴다. 회선이 흔들리면 고정값으로는 못 맞춘다.
+  if(snapAt) snapGap = Math.max(16, Math.min(500, now - snapAt));
+  snapAt = now;
+
   G.t = m.t; G.over = m.over; G.front = m.front;
   W('a').rainCd = m.ca; W('b').rainCd = m.cb;
   G.baseA.hp=m.ba[0]; G.baseA.max=m.ba[1];
   G.baseB.hp=m.bb[0]; G.baseB.max=m.bb[1];
   W('a').gold=m.ga; W('b').gold=m.gb; W('a').up=m.ua; W('b').up=m.ub;
-  G.units = m.u.map(a=>({
-    type:a[0], side:a[1]?'b':'a', T:TYPES[a[0]], x:a[2], yo:a[3], hp:a[4], max:a[5],
-    dead:a[6], hurt:a[7], sw:a[8], ph:a[9],
-    job:a[10]===0?'toMine':(a[10]===1?'mining':'toBase'), carry:a[11], slowT:a[12],
-    size:TYPES[a[0]].size, dmg:TYPES[a[0]].dmg, lane:1, cd:0, spread:0, bounty:0,
-  }));
+
+  const live = [];
+  for(const a of m.u){
+    const id=a[0], type=a[1];
+    let u = seen.get(id);
+    if(!u){
+      u = { id, type, side:a[2]?'b':'a', T:TYPES[type], size:TYPES[type].size,
+            dmg:TYPES[type].dmg, lane:1, cd:0, spread:0, bounty:0, x:a[3], x0:a[3] };
+      seen.set(id, u);
+    }
+    u.x0 = u.x;                 // 지금 보이는 자리에서
+    u.x1 = a[3];                // 새로 받은 자리로
+    u.yo=a[4]; u.hp=a[5]; u.max=a[6];
+    u.dead=a[7]; u.hurt=a[8]; u.sw=a[9]; u.ph=a[10];
+    u.job = a[11]===0?'toMine':(a[11]===1?'mining':'toBase');
+    u.carry=a[12]; u.slowT=a[13];
+    live.push(u);
+  }
+  // 사라진 것은 지도에서도 지운다. 안 지우면 판이 길어질수록 샌다.
+  if(seen.size > live.length*2){
+    const alive=new Set(live.map(u=>u.id));
+    for(const id of seen.keys()) if(!alive.has(id)) seen.delete(id);
+  }
+  G.units = live;
+
   if(G.over && !overShown) finish(foeBase().hp<=0);
+}
+
+/** 스냅샷 사이를 프레임마다 메운다. 게스트만 부른다. */
+function lerpGuest(){
+  const a = Math.min(1, (performance.now()-snapAt) / snapGap);
+  for(const u of G.units) u.x = u.x0 + (u.x1 - u.x0) * a;
 }
 let overShown=false;
 
@@ -1484,6 +1559,7 @@ function hud(dt){
   el('frontV').style.color = held>=.55 ? '#7fd39b' : (held<=.45 ? '#e0605c' : '#cfdae5');
 
   const rc=W(ME).rainCd;
+  syncUps();
   el('ultcd').style.width=(rc>0?(rc/ULT_CD*100):0)+'%';
   el('ult').classList.toggle('hot',rc<=0);
   if(bannerHold>0) bannerHold-=dt;
@@ -1498,7 +1574,7 @@ function loop(ts){
   // **게스트는 시뮬레이션을 돌리지 않는다.** 돌리면 두 화면이 조금씩
   // 갈라지고, 그 차이는 시간이 갈수록 벌어지기만 한다.
   const guest = net.on && net.ready && !net.host;
-  if(!guest) step(dt);
+  if(guest) lerpGuest(); else step(dt);
 
   if(net.on && net.ready && net.host){
     net.snapT -= dt*1000;
@@ -1523,7 +1599,7 @@ openLobby();
 if(location.hostname==='localhost' || location.hostname==='127.0.0.1'){
   Object.assign(globalThis, { STICK:{
     get G(){ return G; }, get net(){ return net; }, get ME(){ return ME; },
-    buy, buyUp, castRain, snapshot, order, connect,
+    buy, buyUp, castRain, snapshot, order, connect, step, draw, hud, applySnap, lerpGuest,
     units(){ return G.units.map(u=>({t:u.type,s:u.side,x:Math.round(u.x),hp:Math.round(u.hp)})); },
     wallet(){ return {a:Math.round(W('a').gold), b:Math.round(W('b').gold)}; },
   }});
