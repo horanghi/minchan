@@ -267,7 +267,8 @@ const STAGES = [
     foes:[['sword',0,10],['archer',.6,5],['shield',1.2,4],['spear',2.5,3],['giant',3,1.5]],
     tip:'광부를 먼저 굴려라. 금이 곧 병력이다.' },
   { nm:'깊은 광산',   gold:300, baseA:1500, baseB:5000, mineT:3.6, bossEvery:50, bossHp:3.2,
-    foes:[['sword',0,8],['archer',.6,9],['shield',1.2,4],['spear',1.2,4],['medic',2.5,1.5],['giant',3,1.5]],
+    foes:[['sword',0,8],['archer',.6,9],['shield',1.2,4],['spear',1.2,4],['medic',2.5,1.5],['giant',3,1.5],
+          ['hero',5,.7]],
     tip:'광맥이 깊어 금이 늦다. 적 궁수가 많으니 방패병을 앞에 세워라.' },
   { nm:'무너진 성채', gold:500, baseA:1800, baseB:7500, mineT:2.0, bossEvery:26, bossHp:3.4,
     // **여기서부터 다른 게임이다.** 적이 새 병종 넷을 데리고 나온다.
@@ -277,7 +278,9 @@ const STAGES = [
     boss:[['berserk',3],['xtitan',2]],
     foes:[['sword',0,6],['archer',.4,5],['spear',.6,4],['shield',.8,4],
           ['giant',1.2,3],['dark',1.2,3],['medic',1.4,1.5],
-          ['sniper',1.6,3],['bomber',1.8,2],['kamikaze',2.0,3],['necro',2.6,2]],
+          ['sniper',1.6,3],['bomber',1.8,2],['kamikaze',2.0,3],['necro',2.6,2],
+          // 거인보다 무거운 것들. 타이탄은 아주 드물게(가중치 0.08 ≈ 300발에 한 번).
+          ['hero',2.2,.9],['berserk',3.2,.35],['xtitan',4.5,.08]],
     tip:'암흑기사는 때릴수록 회복하고, 사령술사는 끝없이 불러낸다. 뒤부터 끊어라.' },
 ];
 /** 지금 판 (0부터). */
@@ -359,10 +362,10 @@ const TYPES = {
   priest: {nm:'사제',     cost:155, hp:100, dmg:0,  rng:170, spd:62, atk:1.20,size:51, gain:48, healer:true, heal:22},
 
   // 용사 — 검기가 직선을 관통한다. 줄지어 선 적을 한 번에 가른다.
-  hero  : {nm:'용사',     cost:560, hp:980, dmg:78, rng:135, spd:88, atk:.85, size:68, gain:230, beam:true},
+  hero  : {nm:'용사',     cost:560, hp:980, dmg:78, rng:135, spd:88, atk:.85, size:68, gain:230, beam:true, heavy:true},
 
   // 버서커 — 느리고 두껍다. 사거리 밖 118px 까지 내려찍는다(먼 쪽은 70%).
-  berserk:{nm:'버서커',   cost:680, hp:2800,dmg:140,rng:80,  spd:26, atk:2.60,size:126,gain:280, slam:118},
+  berserk:{nm:'버서커',   cost:680, hp:2800,dmg:140,rng:80,  spd:26, atk:2.60,size:126,gain:280, slam:118, heavy:true},
 
   // 타이탄 — 전진하지 않는다(stand 150). 세 동작을 돌아가며 쓴다:
   // 손목 레이저(520·0.75) → 대검 내려찍기(230·1.45) → 코어 빔(780·2.1).
@@ -388,7 +391,7 @@ const TYPES = {
   // 감염된 타이탄 — 3판 보스로 버서커 대신 오기도 한다.
   // 우리 타이탄과 같은 3연 동작을 쓴다. 체력은 낮지만 보스 배율이 얹힌다.
   xtitan: {nm:'감염된 타이탄', cost:0, hp:6000, dmg:150, rng:520, spd:24, atk:2.30, size:230, gain:1200,
-           titan:true, stand:170, infected:true, col:'#5fa04a'}
+           titan:true, stand:170, infected:true, heavy:true, col:'#5fa04a'}
 };
 /**
  * 살 수 있는 병종. 다섯 칸 × 세 줄이다.
@@ -507,6 +510,19 @@ function foeBoost(){
   const m = G.t/60, k = stage().ramp || 1;
   return {hp:1+m*.55*k, dmg:1+m*.38*k, size:1};
 }
+/**
+ * 이 병종이 실제로 받을 성장 배율.
+ *
+ * **무거운 것은 절반만 받는다.** 용사·버서커·타이탄은 원래 체력이 크다.
+ * 후반 배율(3판 6분 ×7.27)을 그대로 얹으면 타이탄이 4만 체력으로 서서
+ * 죽지 않는 벽이 된다 — 어려운 게 아니라 끝나지 않는 판이 된다.
+ */
+function boostFor(type){
+  const b = foeBoost(), T = TYPES[type];
+  if(!T || !T.heavy) return b;
+  return { hp: 1 + (b.hp-1)*.35, dmg: 1 + (b.dmg-1)*.5, size: 1 };
+}
+
 /** 스폰 간격. [처음, 최소, 초당 감소]. 3판은 더 촘촘하다. */
 function spawnGap(){
   const g = stage().gap || [3.2,.75,.013];
@@ -527,14 +543,23 @@ function step(dt){
   if(G.spawnT<=0){
     G.spawnT = spawnGap();
     // 1v1 에서는 빨강을 사람이 돌린다. AI 까지 나오면 둘을 동시에 상대한다.
-    if(!(net.on && net.ready)) spawn(pickFoe(), 'b', foeBoost());
+    if(!(net.on && net.ready)){
+      const t = pickFoe();
+      spawn(t, 'b', boostFor(t));
+      // 아주 드물게 오는 것은 알려 준다. 쏟아지는 틈에 조용히 끼면 못 본다.
+      if(t==='xtitan'){ banner('감염된 타이탄 접근'); G.shake=.35; beep(120,.5,.07); }
+    }
   }
   G.bossT -= dt;
   if(G.bossT<=0 && !(net.on && net.ready)){
     G.bossT = stage().bossEvery;
-    const b = foeBoost();
     const bt = pickBoss();
-    spawn(bt,'b',{hp:b.hp*stage().bossHp, dmg:b.dmg*1.5, size:1.35});
+    // **무거운 보스에는 보스 배율을 얹지 않는다.** 이미 체력이 크다 —
+    // 3.4 를 곱하면 6분에 14만짜리가 26초마다 서고, 그건 어려운 게 아니라
+    // 끝나지 않는 판이다. 보스 배율은 거인처럼 가벼운 것에만 쓴다.
+    const hb = boostFor(bt), heavy = TYPES[bt].heavy;
+    spawn(bt,'b',{ hp: hb.hp*(heavy?1:stage().bossHp),
+                   dmg: hb.dmg*(heavy?1.15:1.5), size: heavy?1.1:1.35 });
     banner(bt==='giant' ? '보스 출현' : TYPES[bt].nm+' 출현');
     beep(150,.3,.06);
   }
