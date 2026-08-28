@@ -19,3 +19,7 @@ party/.partykit/
 # minchan_5 개발 도구 (배포 제외)
 minchan_5/tools/node_modules/
 minchan_5/tools/screenshots/
+
+# 스틱맨 1v1 중계 서버 의존성
+party-stickman/node_modules/
+party-stickman/.wrangler/

@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "minchan-stickman",
+  "main": "server.js",
+  "compatibility_date": "2025-09-23",
+
+  // 방 하나 = Durable Object 하나. 바인딩 이름 "Room" 은 클라이언트가 붙는
+  // party 이름("room")과 매칭된다 — routePartykitRequest 가 /parties/:party/:room
+  // 의 :party 를 바인딩 이름과 대소문자 무시로 맞춘다.
+  "durable_objects": {
+    "bindings": [{ "name": "Room", "class_name": "StickmanRoom" }]
+  },
+
+  // 무료 플랜의 Durable Objects 는 SQLite 백엔드를 쓴다.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["StickmanRoom"] }],
+
+  "observability": { "enabled": true }
+}
