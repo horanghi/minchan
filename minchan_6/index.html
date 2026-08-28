@@ -52,7 +52,8 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 
 #bottom{flex:0 0 auto;background:var(--slate);border-top:2px solid var(--line);
   padding:8px 8px calc(env(safe-area-inset-bottom) + 8px)}
-#units{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+/* 여덟 칸이 됐다. 한 줄에 다 넣으면 폰에서 글자가 뭉개진다 — 네 칸씩 두 줄. */
+#units{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
 .ubtn{background:var(--slate2);border:2px solid var(--line);border-radius:4px;padding:6px 1px 4px;
   display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;position:relative}
 .ubtn:active{transform:translateY(2px)}
@@ -193,9 +194,27 @@ const TYPES = {
   sword : {nm:'검사',   cost:60,  hp:130, dmg:15, rng:34,  spd:72, atk:.70, size:52, gain:20},
   archer: {nm:'궁수',   cost:95,  hp:70,  dmg:20, rng:235, spd:60, atk:1.05,size:50, gain:30, ranged:true},
   shield: {nm:'방패병', cost:140, hp:380, dmg:10, rng:36,  spd:48, atk:1.20,size:57, gain:42},
-  giant : {nm:'거인',   cost:280, hp:760, dmg:48, rng:50,  spd:38, atk:1.55,size:84, gain:85}
+  giant : {nm:'거인',   cost:280, hp:760, dmg:48, rng:50,  spd:38, atk:1.55,size:84, gain:85},
+
+  /* 아래 셋은 아군 전용이다. 적 스폰 표에는 넣지 않았다 — 배울 것과 상대할
+     것을 한꺼번에 늘리면 무엇 때문에 졌는지 알 수 없게 된다. */
+
+  // 창병 — 사거리 62. 검사(34)보다 길어 **방패병 뒤에서 찌른다.**
+  // 앞쪽 사거리 안의 적을 한 번에 전부 꿴다. 겹쳐 싸우게 된 뒤로 적이
+  // 뭉쳐 서므로, 줄을 꿰는 무기가 값을 한다.
+  spear : {nm:'창병',   cost:110, hp:170, dmg:22, rng:62,  spd:64, atk:1.00,size:55, gain:34, pierce:true},
+
+  // 의무병 — 때리지 않는다. 사거리 150 이라 전선에서 그만큼 떨어져 서고,
+  // 그 자리에서 반경 안 아군을 계속 고친다. 겹쳐 싸우는 무리에 붙어야
+  // 값을 하는 유닛이다.
+  medic : {nm:'의무병', cost:130, hp:110, dmg:0,  rng:150, spd:66, atk:1.50,size:50, gain:38, medic:true, heal:9, healRng:150},
+
+  // 폭탄병 — 느리게 던지지만 떨어진 자리 44px 안의 적을 전부 때린다.
+  // 뭉친 적을 푸는 열쇠. 한 명한테는 궁수보다 못하다.
+  bomber: {nm:'폭탄병', cost:200, hp:120, dmg:30, rng:180, spd:52, atk:2.20,size:54, gain:60, ranged:true, splash:44}
 };
-const ORDER = ['miner','sword','archer','shield','giant'];
+// 두 줄 × 네 칸. 대체로 싼 것부터다.
+const ORDER = ['miner','sword','archer','spear','shield','medic','bomber','giant'];
 
 let G, cam=0, camUser=0, last=0, dpr=1, cw=0, ch=0, scale=1, VIEW=620, gy=0;
 
@@ -340,7 +359,27 @@ function step(dt){
       if(u.cd<=0){
         u.cd = u.T.atk; u.sw = 1;
         const dam = u.dmg * dmgMul(u.side);
-        if(u.T.ranged) shoot(u.x+dir*10, gy-u.size*.66+u.yo, tgt, dam, u.side);
+        if(u.T.medic){
+          // 때리지 않고 고친다. 자기 자신도 포함이다 — 앞에 나선 의무병이
+          // 혼자 죽어 나가면 쓸 이유가 없다.
+          let n=0;
+          for(const o of us){
+            if(o.side!==u.side||o.dead||o.type==='miner') continue;
+            if(o.hp>=o.max) continue;
+            if(Math.abs(o.x-u.x) > u.T.healRng) continue;
+            o.hp = Math.min(o.max, o.hp + u.T.heal); n++;
+          }
+          if(n) float(u.x, gy-u.size-6+u.yo, '+'+u.T.heal, '#7fd39b', .6);
+        }
+        else if(u.T.ranged) shoot(u.x+dir*10, gy-u.size*.66+u.yo, tgt, dam, u.side, u.T.splash);
+        else if(u.T.pierce){
+          // **앞쪽만** 꿴다. 거인의 광역은 양옆이지만 창은 방향이 있다.
+          for(const o of us){
+            if(o.side===u.side||o.dead) continue;
+            const fwd=(o.x-u.x)*dir;
+            if(fwd>-6 && fwd<=u.T.rng+6) hit(o, dam, o.x);
+          }
+        }
         else if(u.type==='giant'){
           for(const o of us){
             if(o.side===u.side||o.dead) continue;
@@ -348,7 +387,7 @@ function step(dt){
           }
         }
         else hit(tgt, dam, u.x+dir*u.T.rng*.8);
-        beep(u.T.ranged?520:190,.05,.05);
+        beep(u.T.medic?740:(u.T.ranged?520:190),.05,.05);
       }
     } else {
       // **아군끼리는 막지 않는다.** 예전에는 같은 레인 앞 22px 안에 아군이
@@ -376,7 +415,19 @@ function step(dt){
     const k = s.t/s.dur;
     s.x = s.x0 + (s.tx-s.x0)*k;
     s.y = s.y0 + (s.ty-s.y0)*k - Math.sin(Math.PI*k)*38;
-    if(k>=1){ s.done=1; if(s.tgt && !s.tgt.dead) hit(s.tgt, s.dmg, s.x); puff(s.x,s.y,'#1b2430',4); }
+    if(k>=1){
+      s.done=1;
+      if(s.splash){
+        // 떨어진 자리를 친다. 겨눈 적이 이미 죽었어도 폭발은 일어난다.
+        for(const o of G.units){
+          if(o.side===s.side||o.dead) continue;
+          if(Math.abs(o.x-s.x) <= s.splash) hit(o, s.dmg, s.x);
+        }
+        puff(s.x,s.y,'#e8b23a',12);
+      }
+      else if(s.tgt && !s.tgt.dead) hit(s.tgt, s.dmg, s.x);
+      puff(s.x,s.y,'#1b2430',4);
+    }
   }
   G.shots = G.shots.filter(s=>!s.done);
 
@@ -440,10 +491,10 @@ function hit(t,d,at){
     puff(t.x + (t===G.baseA?26:-26), gy-70, '#6b7785', 6);
   }
 }
-function shoot(x,y,tgt,dmg,side){
+function shoot(x,y,tgt,dmg,side,splash){
   const tx=tgt.x, ty=tgt.T?gy-tgt.size*.6+tgt.yo:gy-70;
   const dist=Math.hypot(tx-x,ty-y);
-  G.shots.push({x0:x,y0:y,x,y,tx,ty,tgt,dmg,side,t:0,dur:Math.max(.22,dist/620)});
+  G.shots.push({x0:x,y0:y,x,y,tx,ty,tgt,dmg,side,splash,t:0,dur:Math.max(.22,dist/620)});
 }
 function puff(x,y,c,n){
   for(let i=0;i<n;i++) G.parts.push({x,y,vx:(Math.random()-.5)*130,vy:-Math.random()*150-30,life:.35+Math.random()*.25,c,s:2+Math.random()*2});
@@ -631,6 +682,30 @@ function drawUnit(u){
     ctx.lineTo(h*.3-pull, shY-h*.02);
     ctx.lineTo(h*.3+Math.cos(1.15)*h*.17, shY-h*.02+Math.sin(1.15)*h*.17);
     ctx.stroke(); ctx.lineWidth=lw;
+  } else if(u.type==='spear'){
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(-h*.18,shY+h*.13); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(hx,hy); ctx.stroke();
+    /* 창대. 찌를 때 앞으로 뻗는다 */
+    const sa = armA*.3 + sw*.85, len=h*.95;
+    const bx = hx-Math.cos(sa)*h*.2, by = hy-Math.sin(sa)*h*.2;
+    ctx.lineWidth=lw*.8;
+    ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(bx+Math.cos(sa)*len, by+Math.sin(sa)*len); ctx.stroke();
+    ctx.lineWidth=lw;
+  } else if(u.type==='medic'){
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(-h*.18,shY+h*.12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(h*.2,shY-h*.14); ctx.stroke();
+    /* 초록 십자. 이 색이 아군 파랑과 겹치지 않아 한눈에 구분된다 */
+    ctx.strokeStyle='#7fd39b'; ctx.lineWidth=lw*1.15;
+    ctx.beginPath(); ctx.moveTo(h*.2,shY-h*.3); ctx.lineTo(h*.2,shY-h*.04); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(h*.07,shY-h*.17); ctx.lineTo(h*.33,shY-h*.17); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineWidth=lw;
+  } else if(u.type==='bomber'){
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(-h*.18,shY+h*.12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(hx,hy); ctx.stroke();
+    ctx.beginPath(); ctx.arc(hx+h*.09, hy-h*.01, h*.1, 0, 7); ctx.stroke();
+    ctx.lineWidth=lw*.7;
+    ctx.beginPath(); ctx.moveTo(hx+h*.13,hy-h*.09); ctx.lineTo(hx+h*.2,hy-h*.19); ctx.stroke();
+    ctx.lineWidth=lw;
   } else if(u.type==='shield'){
     ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(hx*.7,hy*.98); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(h*.2,shY+h*.05); ctx.stroke();
@@ -689,7 +764,7 @@ ORDER.forEach(k=>{
 function iconOf(c,k){
   const x=c.getContext('2d'), h=52;
   x.translate(30,64); x.scale(.9,.9);
-  x.strokeStyle = k==='miner' ? '#e0b45f' : '#8fb4e8';
+  x.strokeStyle = k==='miner' ? '#e0b45f' : (k==='medic' ? '#8fd8ae' : '#8fb4e8');
   x.lineWidth=2.6; x.lineCap='round';
   const hip=-h*.42, sh=-h*.72;
   x.beginPath();
@@ -707,6 +782,23 @@ function iconOf(c,k){
   } else if(k==='shield'){
     x.beginPath(); x.moveTo(0,sh); x.lineTo(10,sh+3); x.stroke();
     x.beginPath(); x.rect(11,sh-8,7,18); x.stroke();
+  } else if(k==='spear'){
+    x.beginPath(); x.moveTo(0,sh); x.lineTo(9,sh+2); x.stroke();
+    x.lineWidth=2.1;
+    x.beginPath(); x.moveTo(2,sh+9); x.lineTo(27,sh-9); x.stroke();
+    x.lineWidth=2.6;
+  } else if(k==='medic'){
+    x.beginPath(); x.moveTo(0,sh); x.lineTo(9,sh-5); x.stroke();
+    x.strokeStyle='#7fd39b'; x.lineWidth=3.2;
+    x.beginPath(); x.moveTo(13,sh-14); x.lineTo(13,sh-1); x.stroke();
+    x.beginPath(); x.moveTo(7,sh-8); x.lineTo(19,sh-8); x.stroke();
+    x.lineWidth=2.6;
+  } else if(k==='bomber'){
+    x.beginPath(); x.moveTo(0,sh); x.lineTo(10,sh-3); x.stroke();
+    x.beginPath(); x.arc(15,sh-6,6,0,7); x.stroke();
+    x.lineWidth=1.9;
+    x.beginPath(); x.moveTo(18,sh-11); x.lineTo(22,sh-16); x.stroke();
+    x.lineWidth=2.6;
   } else {
     x.beginPath(); x.moveTo(0,sh); x.lineTo(11,sh+6); x.stroke();
     x.beginPath(); x.moveTo(11,sh+6); x.lineTo(24,sh-9); x.lineWidth=k==='giant'?4.4:3; x.stroke();
