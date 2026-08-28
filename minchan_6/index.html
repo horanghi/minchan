@@ -273,7 +273,8 @@ const STAGES = [
     // **여기서부터 다른 게임이다.** 적이 새 병종 넷을 데리고 나온다.
     ramp:1.9,                       // 시간에 따른 성장이 두 배 가까이 빠르다
     gap:[2.4,.42,.019],             // 처음 2.4초 → 최소 0.42초 간격 (1·2판은 3.2 → .75)
-    bossType:'berserk',             // 거인 대신 버서커. 사거리 밖까지 내려찍는다
+    // 보스는 둘 중 하나다. 같은 얼굴만 오면 세 번째부터는 그냥 큰 숫자가 된다.
+    boss:[['berserk',3],['xtitan',2]],
     foes:[['sword',0,6],['archer',.4,5],['spear',.6,4],['shield',.8,4],
           ['giant',1.2,3],['dark',1.2,3],['medic',1.4,1.5],
           ['sniper',1.6,3],['bomber',1.8,2],['kamikaze',2.0,3],['necro',2.6,2]],
@@ -382,7 +383,12 @@ const TYPES = {
   necro : {nm:'사령술사', cost:0,   hp:200, dmg:0,  rng:220, spd:54, atk:2.80,size:57, gain:190, summon:true, col:'#7a2fa0'},
 
   // 해골병 — 소환물. 약하지만 끝이 없다.
-  bone  : {nm:'해골병',   cost:0,   hp:65,  dmg:14, rng:32,  spd:80, atk:.75, size:45, gain:12,  col:'#6b7785'}
+  bone  : {nm:'해골병',   cost:0,   hp:65,  dmg:14, rng:32,  spd:80, atk:.75, size:45, gain:12,  col:'#6b7785'},
+
+  // 감염된 타이탄 — 3판 보스로 버서커 대신 오기도 한다.
+  // 우리 타이탄과 같은 3연 동작을 쓴다. 체력은 낮지만 보스 배율이 얹힌다.
+  xtitan: {nm:'감염된 타이탄', cost:0, hp:6000, dmg:150, rng:520, spd:24, atk:2.30, size:230, gain:1200,
+           titan:true, stand:170, infected:true, col:'#5fa04a'}
 };
 /**
  * 살 수 있는 병종. 다섯 칸 × 세 줄이다.
@@ -470,6 +476,16 @@ function dmgMul(side){ return 1 + W(side).up.dmg*.10; }
  *
  * 아직 아무것도 안 풀렸으면 검사다 — 표를 잘못 적어도 판이 비지는 않는다.
  */
+/** 이번 보스. 판이 목록을 주면 무게로 고르고, 없으면 거인이다. */
+function pickBoss(){
+  const list = stage().boss;
+  if(!list || !list.length) return 'giant';
+  let total=0; for(const b of list) total+=b[1];
+  let r=Math.random()*total;
+  for(const b of list){ r-=b[1]; if(r<=0) return b[0]; }
+  return list[list.length-1][0];
+}
+
 function pickFoe(){
   const m = G.t/60;
   const open = stage().foes.filter(f => m >= f[1]);
@@ -517,7 +533,7 @@ function step(dt){
   if(G.bossT<=0 && !(net.on && net.ready)){
     G.bossT = stage().bossEvery;
     const b = foeBoost();
-    const bt = stage().bossType || 'giant';
+    const bt = pickBoss();
     spawn(bt,'b',{hp:b.hp*stage().bossHp, dmg:b.dmg*1.5, size:1.35});
     banner(bt==='giant' ? '보스 출현' : TYPES[bt].nm+' 출현');
     beep(150,.3,.06);
@@ -891,6 +907,7 @@ function beamHit(u, dam, dir){
 function titanCombo(u, dam, dir){
   const stage = (u.combo|0) % 3;
   u.combo = (u.combo|0) + 1;
+  u.lastStage = stage;          // 그림이 지금 어느 동작인지 알아야 한다
   if(stage===0){
     lineHit(u, dir, 520, dam*.75);
     G.beams.push({x1:u.x+dir*u.size*.28, x2:u.x+dir*520, y:gy-u.size*.60+u.yo,
@@ -1243,31 +1260,100 @@ function drawUnit(u){
     ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(hx+Math.cos(ba)*h*.62, hy+Math.sin(ba)*h*.62); ctx.stroke();
     ctx.strokeStyle=col; ctx.lineWidth=lw;
   } else if(u.type==='berserk'){
-    /* 두 손 도끼. 어깨가 넓다 */
-    ctx.lineWidth=lw*1.4;
-    ctx.beginPath(); ctx.moveTo(-h*.13,shY); ctx.lineTo(h*.13,shY); ctx.stroke();
-    ctx.lineWidth=lw;
-    for(const sgn of [-1,1]){
-      const ba = armA-.4+sw*1.5 + sgn*.35;
-      ctx.beginPath(); ctx.moveTo(sgn*h*.12,shY); ctx.lineTo(hx,hy); ctx.stroke();
-      ctx.lineWidth=lw*1.5;
-      ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(hx+Math.cos(ba)*h*.5, hy+Math.sin(ba)*h*.5); ctx.stroke();
-      ctx.lineWidth=lw;
+    /* 거대 철퇴. 평소엔 뒤로 끌고, 칠 때 앞으로 내려찍는다 */
+    const a = .55 + (1-sw)*2.15;
+    const armLen=h*.30;
+    const hxx=Math.cos(a)*armLen, hyy=shY+Math.sin(a)*armLen;
+    ctx.lineWidth=lw*1.15;
+    ctx.beginPath(); ctx.moveTo(0,shY); ctx.lineTo(hxx,hyy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,shY-h*.03); ctx.lineTo(hxx*.72,hyy*.94); ctx.stroke();
+    const hl=h*.6;
+    const ex=hxx+Math.cos(a)*hl, ey=hyy+Math.sin(a)*hl;
+    ctx.lineWidth=lw*1.6;
+    ctx.beginPath(); ctx.moveTo(hxx,hyy); ctx.lineTo(ex,ey); ctx.stroke();
+    /* 철퇴 머리 — 덩어리에 가시를 두른다 */
+    ctx.save(); ctx.translate(ex,ey); ctx.rotate(a);
+    const R=h*.17;
+    ctx.lineWidth=lw*.9; ctx.strokeStyle='#1b2430'; ctx.fillStyle='#8a94a3';
+    for(let i=0;i<8;i++){
+      const t2=i*Math.PI/4;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(t2)*R*.8, Math.sin(t2)*R*.8);
+      ctx.lineTo(Math.cos(t2)*R*1.55, Math.sin(t2)*R*1.55); ctx.stroke();
     }
-  } else if(u.type==='titan'){
-    /* 사람이 아니다. 몸통·팔·코어로 세운다 */
-    ctx.lineWidth=lw*1.3;
-    ctx.beginPath(); ctx.rect(-h*.17, -h*.78, h*.34, h*.46); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-h*.1,-h*.32); ctx.lineTo(-h*.12,0); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(h*.1,-h*.32); ctx.lineTo(h*.12,0); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-h*.17,-h*.7); ctx.lineTo(-h*.3,-h*.4); ctx.stroke();
-    const aa = -0.1 + sw*.7;
-    ctx.beginPath(); ctx.moveTo(h*.17,-h*.7);
-    ctx.lineTo(h*.17+Math.cos(aa)*h*.34, -h*.7+Math.sin(aa)*h*.34); ctx.stroke();
-    ctx.beginPath(); ctx.arc(0,-h*.9,h*.1,0,7); ctx.stroke();
-    /* 코어 — 시전할수록 밝다 */
-    ctx.strokeStyle='#8ff0ff'; ctx.lineWidth=lw*1.1;
-    ctx.beginPath(); ctx.arc(0,-h*.55,h*.075*(1+sw*.7),0,7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,0,R,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#6b7785';
+    ctx.beginPath(); ctx.arc(-R*.25,-R*.25,R*.42,0,7); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle=col; ctx.lineWidth=lw;
+    ctx.lineWidth=lw*.7;
+    ctx.beginPath();
+    ctx.moveTo(-hr*.6, headY-hr*.25); ctx.lineTo(-hr*.1, headY);
+    ctx.moveTo( hr*.6, headY-hr*.25); ctx.lineTo( hr*.1, headY); ctx.stroke();
+    ctx.lineWidth=lw;
+  } else if(u.T.titan){
+    /* 기계다. 어깨 장갑 · 가슴 코어 · 바이저 · 손목 캐논 · 대검 */
+    const st = u.lastStage|0;
+    const glow = u.T.infected ? '#9ff06f' : '#78f0ff';
+    const core = u.T.infected ? '#e6ffd8' : '#d8fbff';
+    ctx.lineWidth=lw*1.35;
+    ctx.beginPath(); ctx.moveTo(-h*.19,shY); ctx.lineTo(h*.19,shY); ctx.stroke();
+    ctx.fillStyle = u.T.infected ? '#2a3a24' : '#22323f';
+    for(const sgn of [-1,1]){
+      ctx.beginPath(); ctx.arc(sgn*h*.19, shY+h*.01, h*.09, Math.PI, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    /* 가슴 코어 — 뛴다. 코어 빔(3단) 시전 중에는 크게 밝아진다 */
+    const cy=shY+h*.13;
+    const pulse = .5 + Math.sin(G.t*6+u.id)*.2 + (st===2 ? .9*sw : 0);
+    ctx.fillStyle = 'rgba('+(u.T.infected?'150,240,110':'120,240,255')+','+(.22+pulse*.4)+')';
+    ctx.beginPath(); ctx.arc(0, cy, h*.10*(1+pulse*.35), 0, 7); ctx.fill();
+    ctx.fillStyle=core;
+    ctx.beginPath(); ctx.arc(0, cy, h*.045, 0, 7); ctx.fill();
+    ctx.strokeStyle=glow; ctx.lineWidth=lw*.8;
+    ctx.beginPath(); ctx.arc(0, cy, h*.10, 0, 7); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineWidth=lw*1.35;
+    /* 바이저 */
+    ctx.beginPath(); ctx.moveTo(-hr*.85, headY-hr*.1); ctx.lineTo(hr*.85, headY-hr*.1); ctx.stroke();
+    ctx.strokeStyle = u.T.infected ? '#b6ff7a' : '#ff8f6f'; ctx.lineWidth=lw*.9;
+    ctx.beginPath(); ctx.moveTo(-hr*.55, headY+hr*.15); ctx.lineTo(hr*.55, headY+hr*.15); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineWidth=lw*1.35;
+
+    /* 왼팔 — 손목 레이저 캐논. 1단에서 앞으로 뻗고 총구가 탄다 */
+    const ca = st===0 ? (0.55 - sw*.75) : 0.55;
+    const lox=-h*.19;
+    const cxa=lox+Math.cos(ca)*h*.30, cya=shY+h*.02+Math.sin(ca)*h*.30;
+    ctx.beginPath(); ctx.moveTo(lox,shY+h*.02); ctx.lineTo(cxa,cya); ctx.stroke();
+    ctx.save(); ctx.translate(cxa,cya); ctx.rotate(ca);
+    ctx.fillStyle = u.T.infected ? '#1e2c1a' : '#20303f';
+    ctx.strokeStyle=col; ctx.lineWidth=lw;
+    ctx.beginPath(); ctx.rect(-h*.03, -h*.075, h*.30, h*.15); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(h*.27,-h*.045); ctx.lineTo(h*.34,0); ctx.lineTo(h*.27,h*.045); ctx.stroke();
+    if(st===0 && sw>.1){
+      ctx.fillStyle='rgba('+(u.T.infected?'190,255,140':'255,140,110')+','+(sw*.9)+')';
+      ctx.beginPath(); ctx.arc(h*.36, 0, h*.07*sw+3, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+    ctx.strokeStyle=col; ctx.lineWidth=lw*1.35;
+
+    /* 오른팔 — 대검. 어깨에 걸치다 2단에서 내려찍는다 */
+    const rest=-2.15;
+    const sa2 = st===1 ? (rest + sw*3.0) : rest;
+    const rox=h*.19;
+    const gx2=rox+Math.cos(sa2)*h*.32, gy3=shY+h*.02+Math.sin(sa2)*h*.32;
+    ctx.beginPath(); ctx.moveTo(rox,shY+h*.02); ctx.lineTo(gx2,gy3); ctx.stroke();
+    const bl2=h*.88, ba2=sa2+.06;
+    const ex2=gx2+Math.cos(ba2)*bl2, ey2=gy3+Math.sin(ba2)*bl2;
+    ctx.strokeStyle = u.T.infected ? '#c8e0b8' : '#cfe0ee';
+    ctx.lineWidth=lw*1.9; ctx.lineCap='butt';
+    ctx.beginPath(); ctx.moveTo(gx2,gy3); ctx.lineTo(ex2,ey2); ctx.stroke();
+    ctx.strokeStyle='#1b2430'; ctx.lineWidth=lw*.9;
+    ctx.beginPath(); ctx.moveTo(gx2,gy3); ctx.lineTo(ex2,ey2); ctx.stroke();
+    ctx.lineCap='round';
+    ctx.strokeStyle='#e8b23a'; ctx.lineWidth=lw*1.2;
+    ctx.beginPath();
+    ctx.moveTo(gx2+Math.cos(ba2+1.57)*h*.13, gy3+Math.sin(ba2+1.57)*h*.13);
+    ctx.lineTo(gx2+Math.cos(ba2-1.57)*h*.13, gy3+Math.sin(ba2-1.57)*h*.13); ctx.stroke();
     ctx.strokeStyle=col; ctx.lineWidth=lw;
   } else if(u.type==='mage' || u.type==='frost'){
     const magic = u.type==='mage' ? '#bfe6ff' : '#7fd0ff';
@@ -1424,10 +1510,15 @@ function iconOf(c,k){
     x.beginPath(); x.moveTo(10,sh+4); x.lineTo(25,sh-14); x.stroke();
     x.lineWidth=2.6;
   } else if(k==='berserk'){
-    x.lineWidth=3.6; x.beginPath(); x.moveTo(-7,sh); x.lineTo(7,sh); x.stroke();
-    x.lineWidth=3.2;
-    x.beginPath(); x.moveTo(-7,sh); x.lineTo(-20,sh-12); x.stroke();
-    x.beginPath(); x.moveTo(7,sh); x.lineTo(20,sh-12); x.stroke();
+    /* 철퇴 — 자루와 가시 머리 */
+    x.beginPath(); x.moveTo(0,sh); x.lineTo(8,sh+3); x.stroke();
+    x.lineWidth=3.4;
+    x.beginPath(); x.moveTo(8,sh+3); x.lineTo(19,sh-9); x.stroke();
+    x.lineWidth=2;
+    for(let i=0;i<6;i++){ const t=i*Math.PI/3;
+      x.beginPath(); x.moveTo(21+Math.cos(t)*4, sh-11+Math.sin(t)*4);
+      x.lineTo(21+Math.cos(t)*8, sh-11+Math.sin(t)*8); x.stroke(); }
+    x.beginPath(); x.arc(21,sh-11,5,0,7); x.stroke();
     x.lineWidth=2.6;
   } else if(k==='titan'){
     x.lineWidth=3;
