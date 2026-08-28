@@ -14,7 +14,11 @@
    캔버스는 아래 type 선택자가 이겨 none 을 유지한다(제스처를 우리가 처리). */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
   touch-action:manipulation}
-:root{--paper:#e9eef2;--ink:#1b2430;--ally:#1f5fd0;--foe:#c9302c;--slate:#131a22;--slate2:#1e2833;--line:#33414f;--gold:#e8b23a}
+:root{--paper:#e9eef2;--ink:#1b2430;--ally:#1f5fd0;--foe:#c9302c;--slate:#131a22;--slate2:#1e2833;--line:#33414f;--gold:#e8b23a;
+  /* 내 색 · 상대 색. 빨강을 잡으면 자바스크립트가 이 둘을 맞바꾼다.
+     HUD 가 늘 파랑을 "아군" 으로 칠하면, 자기 병사는 빨간데 화면은 파랑을
+     가리키는 꼴이 된다 — 어느 편인지 알 수 없게 만드는 것이 바로 이것이었다. */
+  --me:#1f5fd0; --op:#c9302c}
 html,body{height:100%;overflow:hidden;background:var(--slate);
   font-family:'Nanum Gothic',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;
   color:#e6edf3;user-select:none;-webkit-user-select:none;touch-action:manipulation}
@@ -32,19 +36,26 @@ html,body{height:100%;overflow:hidden;background:var(--slate);
 .bars{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
 .brow{display:flex;align-items:center;gap:7px;font-size:10px;color:#8ea0b2}
 .brow .lb{flex:0 0 46px}
+/* 이름표에도 색을 준다. 색맹이어도 "내 본진 / 적 본진" 글자가 남는다. */
+.brow.mine .lb{color:var(--me);font-weight:800}
+.brow.theirs .lb{color:var(--op);font-weight:800}
 .bar{flex:1;height:9px;background:#0b1016;border:1.5px solid var(--line);border-radius:2px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--ally);transition:width .18s}
-.bar.foe i{background:var(--foe)}
+.bar i{display:block;height:100%;background:var(--me);transition:width .18s}
+.bar.foe i{background:var(--op)}
 /* 전선. 바탕이 적 땅이고 채워진 파랑이 내 땅이다. 본진 체력바와 달리
    "지금 밀고 있는가" 를 한눈에 보여주는 것이 목적이라 눈금을 넣는다. */
-.bar.line{background:#3a1f22;border-color:#4a3238}
-.bar.line i{background:linear-gradient(90deg,#1f5fd0,#4d8ae8)}
+/* 바탕은 상대 땅이다. 늘 어두운 빨강으로 두면 빨강을 잡은 사람에게는
+   자기 색이 적 땅으로 칠해진다. color-mix 를 못 읽는 브라우저는 앞줄로 떨어진다. */
+.bar.line{background:#2a2130;border-color:#4a3238}
+.bar.line{background:color-mix(in srgb, var(--op) 42%, #10161c)}
+.bar.line i{background:var(--me);filter:saturate(1.15)}
 .bar.line b{position:absolute;left:0;top:0;bottom:0;width:2px;background:#e6edf3;opacity:.5}
 .bar.line{position:relative}
 .brow .vv{flex:0 0 auto;font-family:'Gaegu',cursive;font-size:14px;font-weight:700;color:#cfdae5;min-width:34px;text-align:right}
 #goldbox{flex:0 0 auto;text-align:right;line-height:1.05}
 #goldbox .g{font-family:'Gaegu',cursive;font-weight:700;font-size:27px;color:var(--gold)}
 #goldbox .s{font-size:10px;color:#7d8fa1}
+#goldbox .s b{color:var(--me);font-weight:800}
 
 #stage{flex:1;position:relative;overflow:hidden;background:var(--paper)}
 /* touch-action 은 **상속되지 않는다.** body 에 manipulation 을 걸어도
@@ -122,8 +133,8 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   <div id="top">
     <a id="homeBtn" href="../index.html" title="게임 선택" aria-label="게임 선택">🎮</a>
     <div class="bars">
-      <div class="brow"><span class="lb">아군 본진</span><div class="bar"><i id="barA" style="width:100%"></i></div><span class="vv" id="hpA">1500</span></div>
-      <div class="brow"><span class="lb">적 본진</span><div class="bar foe"><i id="barB" style="width:100%"></i></div><span class="vv" id="hpB">4000</span></div>
+      <div class="brow mine"><span class="lb">내 본진</span><div class="bar"><i id="barA" style="width:100%"></i></div><span class="vv" id="hpA">1500</span></div>
+      <div class="brow theirs"><span class="lb">적 본진</span><div class="bar foe"><i id="barB" style="width:100%"></i></div><span class="vv" id="hpB">4000</span></div>
       <div class="brow"><span class="lb">전선</span><div class="bar line"><i id="barF" style="width:50%"></i><b id="markF"></b></div><span class="vv" id="frontV">–</span></div>
     </div>
     <div id="goldbox"><div class="g" id="gold">0</div><div class="s" id="grate">광부 0</div></div>
@@ -264,6 +275,22 @@ let stageIx = 0;
 let ME = 'a';
 /** 상대 진영. */
 function FOE(){ return ME==='a' ? 'b' : 'a'; }
+
+const TEAM = { a:{ nm:'파랑', c:'#1f5fd0', ink:'#8fb4e8' }, b:{ nm:'빨강', c:'#c9302c', ink:'#e89090' } };
+
+/**
+ * 내 진영 색을 화면 전체에 반영한다.
+ *
+ * 막대·이름표·전선·유닛 버튼 그림이 전부 여기서 색을 받는다. 한 곳이라도
+ * 놓치면 "내 병사는 빨간데 화면은 파랑" 이 되어 어느 편인지 알 수 없게 된다.
+ */
+function paintTeam(){
+  const me=TEAM[ME], op=TEAM[FOE()];
+  const r=document.documentElement.style;
+  r.setProperty('--me', me.c);
+  r.setProperty('--op', op.c);
+  paintIcons();
+}
 function myBase(){ return ME==='a' ? G.baseA : G.baseB; }
 function foeBase(){ return ME==='a' ? G.baseB : G.baseA; }
 function stage(){ return STAGES[stageIx]; }
@@ -1009,10 +1036,15 @@ ORDER.forEach(k=>{
   unitsEl.appendChild(b); btns[k]=b;
   iconOf(b.querySelector('canvas'), k);
 });
+/** 유닛 버튼 그림을 내 진영 색으로 다시 그린다. */
+function paintIcons(){ for(const k of ORDER) iconOf(btns[k].querySelector('canvas'), k); }
 function iconOf(c,k){
   const x=c.getContext('2d'), h=52;
+  // 다시 그릴 수 있어야 한다. 변환을 초기화하지 않으면 부를 때마다 밀린다.
+  x.setTransform(1,0,0,1,0,0);
+  x.clearRect(0,0,c.width,c.height);
   x.translate(30,64); x.scale(.9,.9);
-  x.strokeStyle = k==='miner' ? '#e0b45f' : (k==='medic' ? '#8fd8ae' : '#8fb4e8');
+  x.strokeStyle = k==='miner' ? '#e0b45f' : (k==='medic' ? '#8fd8ae' : TEAM[ME].ink);
   x.lineWidth=2.6; x.lineCap='round';
   const hip=-h*.42, sh=-h*.72;
   x.beginPath();
@@ -1156,7 +1188,7 @@ document.getElementById('closeUp').addEventListener('click',()=>modal.classList.
 document.getElementById('again').addEventListener('click',()=>{
   // 1v1 은 판 진행이 없다. 판을 넘기면 상대와 다른 판을 하게 된다.
   if(net.on){
-    net.close(); ME='a'; stageIx=0;
+    net.close(); ME='a'; paintTeam(); stageIx=0;
     document.getElementById('over').classList.remove('on');
     newGame(); openLobby(); lobbyStatus('');
     return;
@@ -1272,6 +1304,7 @@ function connect(code){
       net.host = m.host;
       net.seated = true;
       ME = m.seat;
+      paintTeam();
       // 여기서야 방이 실제로 생겼다. 이제 코드를 보여준다.
       document.getElementById('lobbyCode').textContent = code;
       lobbyStatus(net.host ? '방 코드 '+code+' — 상대를 기다린다' : '들어갔다. 시작을 기다린다');
@@ -1358,7 +1391,7 @@ function order(k){
 }
 
 document.getElementById('btnSolo').addEventListener('click',()=>{
-  net.close(); ME='a'; stageIx=0; newGame(); closeLobby();
+  net.close(); ME='a'; paintTeam(); stageIx=0; newGame(); closeLobby();
 });
 document.getElementById('btnHost').addEventListener('click',()=>{ connect(roomCode()); });
 document.getElementById('btnJoin').addEventListener('click',()=>{
@@ -1371,7 +1404,7 @@ const el=id=>document.getElementById(id);
 function hud(dt){
   el('gold').textContent=Math.floor(W(ME).gold);
   const mc=minerCount(ME);
-  el('grate').textContent='광부 '+mc+' · '+(mc*haul(ME)/2.9).toFixed(1)+'/초';
+  el('grate').innerHTML='<b>'+TEAM[ME].nm+'</b> · 광부 '+mc+' · '+(mc*haul(ME)/2.9).toFixed(1)+'/초';
   el('mcnt').textContent=mc;
   // "아군 본진" 은 내 진영의 것이다. 게스트 화면에서 남의 체력을 자기 것으로
   // 읽으면 지고 있는 줄도 모르고 판이 끝난다.
@@ -1419,6 +1452,7 @@ function loop(ts){
   draw(); hud(dt);
   requestAnimationFrame(loop);
 }
+paintTeam();
 newGame(); resize(); requestAnimationFrame(loop);
 // 첫 화면은 로비다. 혼자 할지 붙을지 먼저 고른다.
 openLobby();
