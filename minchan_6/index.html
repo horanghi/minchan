@@ -418,12 +418,17 @@ function step(dt){
             const fwd=(o.x-u.x)*dir;
             if(fwd>-6 && fwd<=u.T.rng+6) hit(o, dam, o.x);
           }
+          // 본진은 유닛 목록에 없다. 따로 찌르지 않으면 창병 앞에서
+          // 본진이 멀쩡하다 — 때리는 시늉만 하고 체력이 안 준다.
+          const bf=(base.x-u.x)*dir;
+          if(bf>-6 && bf<=u.T.rng+6) hit(base, dam, base.x);
         }
         else if(u.type==='giant'){
           for(const o of us){
             if(o.side===u.side||o.dead) continue;
             if(Math.abs(o.x-u.x) <= u.T.rng+6) hit(o, dam, o.x);
           }
+          if(Math.abs(base.x-u.x) <= u.T.rng+6) hit(base, dam, base.x);
         }
         else hit(tgt, dam, u.x+dir*u.T.rng*.8);
         beep(u.T.chain?1180:(u.T.medic?740:(u.T.ranged?520:190)),.05,.05);
@@ -464,6 +469,10 @@ function step(dt){
           hit(o, s.dmg, s.x);
           if(s.slow) o.slowT = s.slow;   // 얼린다
         }
+        // 본진도 폭발 범위 안이면 맞는다. 유닛 목록에만 물으면 본진 앞에
+        // 떨어진 폭탄이 아무 일도 하지 않는다.
+        const bs = s.side==='a' ? G.baseB : G.baseA;
+        if(Math.abs(bs.x - s.x) <= s.splash) hit(bs, s.dmg, s.x);
         puff(s.x,s.y, s.slow?'#9fe0ff':'#e8b23a', s.slow?16:12);
       }
       else if(s.tgt && !s.tgt.dead) hit(s.tgt, s.dmg, s.x);
