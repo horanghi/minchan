@@ -35,6 +35,12 @@ html,body{height:100%;overflow:hidden;background:var(--slate);
 .bar{flex:1;height:9px;background:#0b1016;border:1.5px solid var(--line);border-radius:2px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--ally);transition:width .18s}
 .bar.foe i{background:var(--foe)}
+/* 전선. 바탕이 적 땅이고 채워진 파랑이 내 땅이다. 본진 체력바와 달리
+   "지금 밀고 있는가" 를 한눈에 보여주는 것이 목적이라 눈금을 넣는다. */
+.bar.line{background:#3a1f22;border-color:#4a3238}
+.bar.line i{background:linear-gradient(90deg,#1f5fd0,#4d8ae8)}
+.bar.line b{position:absolute;left:0;top:0;bottom:0;width:2px;background:#e6edf3;opacity:.5}
+.bar.line{position:relative}
 .brow .vv{flex:0 0 auto;font-family:'Gaegu',cursive;font-size:14px;font-weight:700;color:#cfdae5;min-width:34px;text-align:right}
 #goldbox{flex:0 0 auto;text-align:right;line-height:1.05}
 #goldbox .g{font-family:'Gaegu',cursive;font-weight:700;font-size:27px;color:var(--gold)}
@@ -102,6 +108,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
     <div class="bars">
       <div class="brow"><span class="lb">아군 본진</span><div class="bar"><i id="barA" style="width:100%"></i></div><span class="vv" id="hpA">1500</span></div>
       <div class="brow"><span class="lb">적 본진</span><div class="bar foe"><i id="barB" style="width:100%"></i></div><span class="vv" id="hpB">4000</span></div>
+      <div class="brow"><span class="lb">전선</span><div class="bar line"><i id="barF" style="width:50%"></i><b id="markF"></b></div><span class="vv" id="frontV">–</span></div>
     </div>
     <div id="goldbox"><div class="g" id="gold">0</div><div class="s" id="grate">광부 0</div></div>
   </div>
@@ -251,7 +258,8 @@ function newGame(){
     units:[], shots:[], parts:[], texts:[], rain:[], bolts:[],
     spawnT:2.5, bossT:S.bossEvery, ultCd:0, turretT:0,
     up,
-    kills:0, mined:0, loot:0, over:false
+    kills:0, mined:0, loot:0, over:false,
+    front:(BASE_A+BASE_B)/2
   };
   cam = 0;
   banner((stageIx+1)+'판 · '+S.nm);
@@ -496,6 +504,13 @@ function step(dt){
   const foesAlive = G.units.filter(u=>u.side==='b'&&!u.dead);
   let front = foesAlive.length ? Math.min(...foesAlive.map(u=>u.x)) : BASE_B-200;
   const allies = G.units.filter(u=>u.side==='a'&&!u.dead&&u.type!=='miner');
+
+  // 지표용 전선 — 양쪽 선두의 한가운데다. 한쪽이 비면 그쪽 본진을 선두로 친다.
+  // 아무도 없으면 직전 값을 그대로 둬서 막대가 튀지 않는다.
+  const tipA = allies.length ? Math.max(...allies.map(u=>u.x)) : BASE_A;
+  const tipB = foesAlive.length ? Math.min(...foesAlive.map(u=>u.x)) : BASE_B;
+  G.front = (tipA + tipB)/2;
+
   if(allies.length) front = (front + Math.max(...allies.map(u=>u.x)))/2;
   const want = clamp(front - VIEW*.5, 0, WORLD-VIEW);
   if(camUser>0) camUser -= dt; else cam += (want-cam)*Math.min(1, dt*2.4);
@@ -1060,6 +1075,13 @@ function hud(dt){
     btns[k].classList.toggle('off',!ok);
     btns[k].classList.toggle('rdy',ok);
   }
+  // 전선. 0% 가 아군 본진, 100% 가 적 본진이다.
+  const held = clamp((G.front-BASE_A)/(BASE_B-BASE_A), 0, 1);
+  el('barF').style.width=(held*100).toFixed(1)+'%';
+  el('markF').style.left='50%';
+  el('frontV').textContent = Math.round(held*100)+'%';
+  el('frontV').style.color = held>=.55 ? '#7fd39b' : (held<=.45 ? '#e0605c' : '#cfdae5');
+
   el('ultcd').style.width=(G.ultCd>0?(G.ultCd/ULT_CD*100):0)+'%';
   el('ult').classList.toggle('hot',G.ultCd<=0);
   if(bannerHold>0) bannerHold-=dt;
