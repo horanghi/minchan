@@ -592,6 +592,7 @@ function step(dt){
     if(u.dead){ u.dead += dt; continue; }
     u.hurt = Math.max(0, u.hurt-dt);
     if(u.slowT>0) u.slowT -= dt;
+    if(u.ward>0) u.ward -= dt;
 
     /* --- 광부 --- */
     if(u.type==='miner'){
@@ -852,7 +853,13 @@ function hit(t,d,at){
     // **광부는 무적이다.** 무기도 없고 전선에도 오지 않는다. 광역기가
     // 스치기만 해도 경제가 통째로 날아가면, 싸우는 게 아니라 서로의
     // 광산을 지우는 게임이 된다.
-    if(t.type==='miner') return;
+    if(t.type==='miner'){
+      // 무적인 건 맞다. 다만 아무 반응이 없으면 화면에서는 '쓸려나간 것'과
+      // 구분이 안 된다. 타이탄 레이저가 광부를 지나갈 때 튕겨냈다는 걸 보여준다.
+      t.ward = .5;
+      puff(t.x, gy-t.size*.7+t.yo, '#bfe6ff', 3);
+      return;
+    }
     t.hp -= d; t.hurt=.12;
     float(t.x, gy-t.size-6+t.yo, Math.round(d), t.side==='a'?'#c9302c':'#1b2430', .55);
     puff(at||t.x, gy-t.size*.6+t.yo, t.side==='a'?'#1f5fd0':'#c9302c', 5);
@@ -1465,6 +1472,17 @@ function drawUnit(u){
     ctx.moveTo(u.x-w, gy+u.yo); ctx.lineTo(u.x+w, gy+u.yo);
     ctx.moveTo(u.x-w*.6, gy+u.yo-4); ctx.lineTo(u.x+w*.6, gy+u.yo-4);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  if(!u.dead && u.ward>0){
+    /* 광부는 무적이다. 그 사실이 화면에도 보여야 한다. */
+    ctx.save();
+    const a = Math.min(1, u.ward/.5);
+    ctx.beginPath(); ctx.arc(u.x, gy - h*.5 + u.yo, h*.8, 0, Math.PI*2);
+    ctx.globalAlpha = .10 + a*.16; ctx.fillStyle = '#9fd8ff'; ctx.fill();
+    ctx.globalAlpha = .30 + a*.55; ctx.strokeStyle = '#cfeaff';
+    ctx.lineWidth = 2 + a*1.6; ctx.stroke();
     ctx.restore();
   }
 
