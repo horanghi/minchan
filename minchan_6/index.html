@@ -573,7 +573,7 @@ function step(dt){
     // 내 본진 쪽 340px 안에 들어온 적 중 가장 가까운 것.
     const bx = baseX(sd), d = dirOf(sd);
     const tgt = G.units
-      .filter(u=>u.side!==sd && !u.dead && (u.x-bx)*d < 340 && (u.x-bx)*d > 0)
+      .filter(u=>u.side!==sd && !u.dead && u.type!=='miner' && (u.x-bx)*d < 340 && (u.x-bx)*d > 0)
       .sort((p,q)=>(p.x-bx)*d - (q.x-bx)*d)[0];
     if(tgt){ shoot(bx+d*8, gy-108, tgt, 12+w.up.turret*8, sd); w.turretT = Math.max(.45, 1.5-w.up.turret*.12); }
     else w.turretT = .25;
@@ -652,7 +652,9 @@ function step(dt){
 
     let tgt=null, td=1e9, best=1e9;
     for(const o of us){
-      if(o.side===u.side || o.dead) continue;
+      // 광부는 겨누지 않는다. 무적인 것을 표적으로 잡으면 그 앞에 서서
+      // 영원히 헛손질만 하고 전선이 멈춘다.
+      if(o.side===u.side || o.dead || o.type==='miner') continue;
       const d = Math.abs(o.x-u.x);
       const sc = d + Math.abs(o.lane-u.lane)*16;
       if(sc<best && (o.x-u.x)*dir > -40){ best=sc; td=d; tgt=o; }
@@ -839,6 +841,10 @@ function step(dt){
 function hit(t,d,at){
   if(t.T){
     if(t.dead) return;
+    // **광부는 무적이다.** 무기도 없고 전선에도 오지 않는다. 광역기가
+    // 스치기만 해도 경제가 통째로 날아가면, 싸우는 게 아니라 서로의
+    // 광산을 지우는 게임이 된다.
+    if(t.type==='miner') return;
     t.hp -= d; t.hurt=.12;
     float(t.x, gy-t.size-6+t.yo, Math.round(d), t.side==='a'?'#c9302c':'#1b2430', .55);
     puff(at||t.x, gy-t.size*.6+t.yo, t.side==='a'?'#1f5fd0':'#c9302c', 5);
