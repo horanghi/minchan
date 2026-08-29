@@ -369,7 +369,7 @@ const TYPES = {
 
   // 타이탄 — 전진하지 않는다(stand 150). 세 동작을 돌아가며 쓴다:
   // 손목 레이저(520·0.75) → 대검 내려찍기(230·1.45) → 코어 빔(780·2.1).
-  titan : {nm:'타이탄',   cost:1800,hp:9000,dmg:200,rng:520, spd:20, atk:2.10,size:252,gain:900, titan:true, stand:150},
+  titan : {nm:'타이탄',   cost:6000,hp:9000,dmg:200,rng:520, spd:20, atk:2.10,size:252,gain:900, titan:true, stand:150},
 
   /* ── 적 전용. 3판에서 나온다 ── */
 
@@ -399,9 +399,17 @@ const TYPES = {
  * 적 전용(암흑기사·저격수·자폭병·사령술사·해골병)은 여기 없다 — 표에는
  * 있지만 버튼이 없으니 살 수 없다.
  */
-const ORDER = ['miner','sword','archer','spear','shield',
-               'medic','priest','frost','bomber','mage',
-               'cavalry','hero','berserk','giant','titan'];
+const BUYABLE = ['miner','sword','archer','spear','shield',
+                 'medic','priest','frost','bomber','mage',
+                 'cavalry','hero','berserk','giant','titan'];
+
+/**
+ * 버튼 차례는 **값싼 것부터**다.
+ *
+ * 손으로 적어 두면 값을 고칠 때마다 자리가 어긋난다. 표에서 직접 정렬해
+ * 값과 자리가 갈라질 수 없게 한다.
+ */
+const ORDER = [...BUYABLE].sort((a,b)=>TYPES[a].cost - TYPES[b].cost);
 
 let G, cam=0, camUser=0, last=0, dpr=1, cw=0, ch=0, scale=1, VIEW=620, gy=0;
 
