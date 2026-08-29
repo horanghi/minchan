@@ -276,6 +276,7 @@ const STAGES = [
     gap:[2.4,.42,.019],             // 처음 2.4초 → 최소 0.42초 간격 (1·2판은 3.2 → .75)
     // 보스는 둘 중 하나다. 같은 얼굴만 오면 세 번째부터는 그냥 큰 숫자가 된다.
     boss:[['berserk',3],['xtitan',2]],
+    tman:true,                      // 적 성을 처음 때리면 T맨이 깨어난다
     foes:[['sword',0,6],['archer',.4,5],['spear',.6,4],['shield',.8,4],
           ['giant',1.2,3],['dark',1.2,3],['medic',1.4,1.5],
           ['sniper',1.6,3],['bomber',1.8,2],['kamikaze',2.0,3],['necro',2.6,2],
@@ -395,6 +396,14 @@ const TYPES = {
   // 해골병 — 소환물. 약하지만 끝이 없다.
   bone  : {nm:'해골병',   cost:0,   hp:65,  dmg:14, rng:32,  spd:80, atk:.75, size:45, gain:12,  col:'#6b7785'},
 
+  // T맨 — 3판에서 **적 성을 처음 때리는 순간** 깨어난다. 타이탄보다
+  // 1.5배 크다(378). 세 동작을 돌아가며 쓴다:
+  //   건틀랫(300·2.0배) → 어깨 딱풀미사일(반경 130·3.2초 붙잡음)
+  //   → 코어 빔(900·2.4배)
+  // 붙어도 물러서도 각각 다른 것이 날아온다.
+  tman  : {nm:'T맨', cost:0, hp:8000, dmg:85, rng:900, spd:18, atk:2.40, size:378,
+           gain:2600, tman:true, heavy:true, stand:200, col:'#c2a24a'},
+
   // 감염된 타이탄 — 3판 보스로 버서커 대신 오기도 한다.
   // 우리 타이탄과 같은 3연 동작을 쓴다. 체력은 낮지만 보스 배율이 얹힌다.
   xtitan: {nm:'감염된 타이탄', cost:0, hp:6000, dmg:150, rng:520, spd:24, atk:2.30, size:230, gain:1200,
@@ -444,6 +453,7 @@ function newGame(){
       b:{ gold:S.gold, up:{dmg:0,mine:0,turret:0,base:0}, turretT:0, mined:0, rainCd:0 },
     },
     kills:0, loot:0, over:false,
+    tmanUp:false,                   // T맨은 한 판에 한 번만 깨어난다
     front:(BASE_A+BASE_B)/2
   };
   cam = 0;
@@ -536,6 +546,21 @@ function boostFor(type){
   const b = foeBoost(), T = TYPES[type];
   if(!T || !T.heavy) return b;
   return { hp: 1 + (b.hp-1)*.35, dmg: 1 + (b.dmg-1)*.5, size: 1 };
+}
+
+/**
+ * T맨을 깨운다. 판당 한 번뿐이다.
+ *
+ * **시간 성장도 보스 배율도 얹지 않는다.** 쏟아지는 웨이브가 아니라 내가
+ * 성문을 두드려서 부른, 정해진 한 판짜리 상대다. 3판 성장(5분이면 ×2.8)을
+ * 얹으면 늦게 뚫을수록 못 잡는 벽이 되어, 밀어붙인 사람만 벌을 받는다.
+ * 대신 이쪽 강화는 그대로 붙으므로 늦게 붙을수록 이쪽이 유리하다.
+ */
+function wakeTman(){
+  G.tmanUp = true;
+  spawn('tman', 'b', { hp:1, dmg:1, size:1 });
+  banner('T맨 각성');
+  G.shake=.7; beep(58,.95,.095);
 }
 
 /** 스폰 간격. [처음, 최소, 초당 감소]. 3판은 더 촘촘하다. */
@@ -697,6 +722,7 @@ function step(dt){
         u.chg = 0;
 
         if(u.T.suicide){ blowUp(u, dam, dir); }
+        else if(u.T.tman){ tmanCombo(u, dam, dir, tgt); }
         else if(u.T.titan){ titanCombo(u, dam, dir); }
         else if(u.T.slam){ slamHit(u, dam, dir); }
         else if(u.T.beam){ beamHit(u, dam, dir); }
@@ -886,6 +912,10 @@ function hit(t,d,at){
   } else {
     t.hp = Math.max(0, t.hp-d);
     puff(t.x + (t===G.baseA?26:-26), gy-70, '#6b7785', 6);
+    // **3판 — 적 성벽에 처음 손을 대는 순간 안에서 T맨이 깨어난다.**
+    // 밀어붙이기만 하면 끝나는 판이 아니게 하는 장치다. 성문을 두드린
+    // 대가를 그 자리에서 치른다.
+    if(!G.tmanUp && stage().tman && t===foeBase() && !(net.on && net.ready)) wakeTman();
   }
 }
 /**
@@ -1026,6 +1056,43 @@ function titanCombo(u, dam, dir){
       life:.55, max:.55, c1:'rgba(90,160,255,.35)', c2:'#bfe9ff', w:120});
     G.shake=.45; beep(220,.6,.08);
     float(u.x+dir*200, gy-u.size*.75+u.yo, '코어 빔', '#8ff0ff', 1.3);
+  }
+}
+
+/**
+ * T맨 — 세 동작. 타이탄과 달리 **거리마다 성격이 다르다.**
+ *
+ * 건틀랫은 코앞만 후려치고, 딱풀미사일은 떨어진 자리를 붙잡아 두고,
+ * 코어 빔은 전장을 가른다. 붙어도 물러서도 각각 다른 것이 날아온다.
+ */
+function tmanCombo(u, dam, dir, tgt){
+  const st = (u.combo|0) % 3;
+  u.combo = (u.combo|0) + 1;
+  u.lastStage = st;                 // 그림이 지금 어느 동작인지 알아야 한다
+
+  if(st===0){
+    /* 건틀랫 — 코앞을 후려친다. 세 동작 중 가장 아프다. */
+    lineHit(u, dir, 300, dam*2.0);
+    ring(u.x+dir*200, gy-10, '#3a3222', 150, .38);
+    ring(u.x+dir*200, gy-10, '#ffd86a', 105, .30);
+    puff(u.x+dir*205, gy-18, '#c2a24a', 26);
+    G.shake=.55; beep(64,.42,.09);
+    float(u.x+dir*150, gy-u.size*.70+u.yo, '건틀랫', '#ffd86a', 1.0);
+  } else if(st===1){
+    /* 어깨 딱풀미사일 — 터진 자리를 3.2초 붙잡는다. 무리를 묶어 두는 쪽이다. */
+    const aim = tgt || (u.side==='a' ? G.baseB : G.baseA);
+    shoot(u.x+dir*u.size*.20, gy-u.size*.80+u.yo, aim, dam*1.1, u.side, 130, 3.2);
+    G.shake=.18; beep(520,.28,.06);
+    float(u.x+dir*110, gy-u.size*.78+u.yo, '딱풀미사일', '#ffb347', 1.2);
+  } else {
+    /* 코어 빔 — 전장을 가른다. 1v1 이 아니므로 성도 깎는다. */
+    lineHit(u, dir, 900, dam*2.4);
+    G.beams.push({x1:u.x, x2:u.x+dir*900, y:gy-u.size*.50+u.yo,
+      life:.6, max:.6, c1:'rgba(255,200,90,.5)', c2:'#fff6d8', w:80});
+    G.beams.push({x1:u.x, x2:u.x+dir*900, y:gy-u.size*.50+u.yo,
+      life:.6, max:.6, c1:'rgba(255,150,60,.35)', c2:'#ffe6a8', w:140});
+    G.shake=.5; beep(200,.65,.085);
+    float(u.x+dir*220, gy-u.size*.72+u.yo, '코어 빔', '#ffd86a', 1.3);
   }
 }
 
@@ -1456,6 +1523,78 @@ function drawUnit(u){
     ctx.moveTo(-hr*.6, headY-hr*.25); ctx.lineTo(-hr*.1, headY);
     ctx.moveTo( hr*.6, headY-hr*.25); ctx.lineTo( hr*.1, headY); ctx.stroke();
     ctx.lineWidth=lw;
+  } else if(u.T.tman){
+    /* T맨 — 어깨 딱풀미사일 발사관 · 가슴 코어 · 양손 건틀랫.
+       타이탄과 실루엣이 겹치면 1.5배 크다는 게 안 읽힌다. 팔 끝을 칼이
+       아니라 주먹으로 두껍게 막아, 멀리서도 다른 것이 왔다는 걸 안다. */
+    const st = u.lastStage|0;
+    const glow='#ffd86a', core='#fff6d8';
+    ctx.lineWidth=lw*1.35;
+
+    /* 어깨 — 그 위에 발사관을 얹는다 */
+    ctx.beginPath(); ctx.moveTo(-h*.23,shY); ctx.lineTo(h*.23,shY); ctx.stroke();
+    for(const sgn of [-1,1]){
+      ctx.fillStyle='#3a3222';
+      ctx.beginPath(); ctx.arc(sgn*h*.23, shY+h*.01, h*.10, Math.PI, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      /* 딱풀미사일 발사관 — 통 두 개. 쏘는 동안 주둥이가 탄다 */
+      ctx.save(); ctx.translate(sgn*h*.23, shY-h*.075);
+      ctx.fillStyle='#2b2517'; ctx.lineWidth=lw;
+      ctx.beginPath(); ctx.rect(-h*.08,-h*.075, h*.16, h*.095); ctx.fill(); ctx.stroke();
+      const lit = (st===1 && sw>.12);
+      ctx.fillStyle = lit ? '#ffb347' : '#8a7a3a';
+      for(const t of [-1,1]){
+        ctx.beginPath(); ctx.arc(t*h*.04, -h*.028, h*.027, 0, 7); ctx.fill();
+      }
+      if(lit){
+        ctx.fillStyle='rgba(255,190,90,'+(sw*.8)+')';
+        ctx.beginPath(); ctx.arc(0,-h*.028, h*.075*sw+3, 0, 7); ctx.fill();
+      }
+      ctx.restore();
+      ctx.lineWidth=lw*1.35;
+    }
+
+    /* 가슴 코어 — 코어 빔(3단) 시전 중에 크게 밝아진다 */
+    const cy=shY+h*.14;
+    const pulse=.5+Math.sin(G.t*6+u.id)*.2+(st===2 ? 1.0*sw : 0);
+    ctx.fillStyle='rgba(255,205,90,'+(.22+pulse*.42)+')';
+    ctx.beginPath(); ctx.arc(0,cy,h*.115*(1+pulse*.4),0,7); ctx.fill();
+    ctx.fillStyle=core;
+    ctx.beginPath(); ctx.arc(0,cy,h*.05,0,7); ctx.fill();
+    ctx.strokeStyle=glow; ctx.lineWidth=lw*.85;
+    ctx.beginPath(); ctx.arc(0,cy,h*.115,0,7); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineWidth=lw*1.35;
+
+    /* 바이저 */
+    ctx.beginPath(); ctx.moveTo(-hr*.9, headY-hr*.1); ctx.lineTo(hr*.9, headY-hr*.1); ctx.stroke();
+    ctx.strokeStyle='#ffbf4a'; ctx.lineWidth=lw*.9;
+    ctx.beginPath(); ctx.moveTo(-hr*.6, headY+hr*.15); ctx.lineTo(hr*.6, headY+hr*.15); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineWidth=lw*1.35;
+
+    /* 양손 건틀랫. 오른쪽이 1단에서 앞으로 내지른다 */
+    const gauntlet=(sgn, ang)=>{
+      const ox=sgn*h*.23, oy=shY+h*.03;
+      const fx=ox+Math.cos(ang)*h*.30, fy=oy+Math.sin(ang)*h*.30;
+      ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(fx,fy); ctx.stroke();
+      ctx.save(); ctx.translate(fx,fy); ctx.rotate(ang);
+      ctx.fillStyle='#3a3222'; ctx.strokeStyle=col; ctx.lineWidth=lw*1.15;
+      ctx.beginPath(); ctx.rect(-h*.025,-h*.105, h*.25, h*.21); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle=glow; ctx.lineWidth=lw*.7;
+      for(const t of [-.052,.052]){
+        ctx.beginPath(); ctx.moveTo(h*.035, t*h); ctx.lineTo(h*.205, t*h); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.strokeStyle=col; ctx.lineWidth=lw*1.35;
+      return [fx,fy];
+    };
+    gauntlet(-1, 0.9);
+    const punch = st===0 ? (0.55 - sw*1.45) : 0.55;
+    const [pfx,pfy] = gauntlet(1, punch);
+    if(st===0 && sw>.5){
+      ctx.strokeStyle='#ffd86a'; ctx.lineWidth=lw*1.1;
+      ctx.beginPath(); ctx.arc(pfx+h*.26, pfy, h*.14*sw, -1.0, 1.0); ctx.stroke();
+      ctx.strokeStyle=col; ctx.lineWidth=lw*1.35;
+    }
   } else if(u.T.titan){
     /* 기계다. 어깨 장갑 · 가슴 코어 · 바이저 · 손목 캐논 · 대검 */
     const st = u.lastStage|0;
