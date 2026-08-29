@@ -367,6 +367,13 @@ const TYPES = {
   // 버서커 — 느리고 두껍다. 사거리 밖 118px 까지 내려찍는다(먼 쪽은 70%).
   berserk:{nm:'버서커',   cost:680, hp:2800,dmg:140,rng:80,  spd:26, atk:2.60,size:126,gain:280, slam:118, heavy:true},
 
+  // 기관총 장갑차 — 사람이 아니라 **차량**이다. 사거리 300 에서 멈춰
+  // 여섯 발을 0.075초 간격으로 뿌린다. 한 발은 22 로 가볍지만 **탄마다
+  // 표적을 새로 고르기 때문에** 줄지어 선 무리를 훑는다. 뭉친 큰 것
+  // 하나를 잡는 데는 버서커만 못하다. 대신 장갑이 두꺼워 오래 버틴다.
+  apc   : {nm:'기관총 장갑차', cost:2500, hp:3400, dmg:32, rng:300, spd:46, atk:1.15,
+           size:104, gain:520, vehicle:true, mg:8, mgGap:.075},
+
   // 타이탄 — 전진하지 않는다(stand 150). 세 동작을 돌아가며 쓴다:
   // 손목 레이저(520·0.75) → 대검 내려찍기(230·1.45) → 코어 빔(780·2.1).
   titan : {nm:'타이탄',   cost:4000,hp:9000,dmg:200,rng:520, spd:20, atk:2.10,size:252,gain:900, titan:true, stand:150},
@@ -401,7 +408,7 @@ const TYPES = {
  */
 const BUYABLE = ['miner','sword','archer','spear','shield',
                  'medic','priest','frost','bomber','mage',
-                 'cavalry','hero','berserk','giant','titan'];
+                 'cavalry','hero','berserk','giant','apc','titan'];
 
 /**
  * 버튼 차례는 **값싼 것부터**다.
@@ -593,6 +600,7 @@ function step(dt){
     u.hurt = Math.max(0, u.hurt-dt);
     if(u.slowT>0) u.slowT -= dt;
     if(u.ward>0) u.ward -= dt;
+    if(u.mgN>0) mgTick(u, dt);
 
     /* --- 광부 --- */
     if(u.type==='miner'){
@@ -704,6 +712,7 @@ function step(dt){
           }
           if(n) float(u.x, gy-u.size-6+u.yo, '+'+u.T.heal, '#7fd39b', .6);
         }
+        else if(u.T.mg){ u.mgN = u.T.mg; u.mgT = 0; }
         else if(u.T.chain) castChain(u, tgt, dam);
         else if(u.T.ranged) shoot(u.x+dir*10, gy-u.size*.66+u.yo, tgt, dam, u.side, u.T.splash, u.T.slow);
         else if(u.T.pierce){
@@ -732,7 +741,7 @@ function step(dt){
           u.hp = Math.min(u.max, u.hp + heal);
           float(u.x, gy-u.size-8+u.yo, '+'+heal, '#9a5fd0', .6);
         }
-        beep(u.T.chain?1180:(u.T.medic?740:(u.T.ranged?520:190)),.05,.05);
+        beep(u.T.chain?1180:(u.T.medic?740:(u.T.mg?300:(u.T.ranged?520:190))),.05,.05);
       }
     }
 
@@ -766,7 +775,7 @@ function step(dt){
     s.t += dt;
     const k = s.t/s.dur;
     s.x = s.x0 + (s.tx-s.x0)*k;
-    s.y = s.y0 + (s.ty-s.y0)*k - Math.sin(Math.PI*k)*38;
+    s.y = s.y0 + (s.ty-s.y0)*k - (s.flat ? 0 : Math.sin(Math.PI*k)*38);
     if(k>=1){
       s.done=1;
       if(s.splash){
@@ -879,10 +888,39 @@ function hit(t,d,at){
     puff(t.x + (t===G.baseA?26:-26), gy-70, '#6b7785', 6);
   }
 }
-function shoot(x,y,tgt,dmg,side,splash,slow){
+/**
+ * 기관총 연사. 한 번 사격이 여섯 발이고, **탄마다 표적을 새로 고른다.**
+ *
+ * 하나를 물고 늘어지면 그냥 사거리 긴 궁수다. 사거리 안에 선 것들 중에서
+ * 매번 새로 뽑아야 줄지어 오는 무리를 훑는 맛이 난다.
+ */
+function mgTick(u, dt){
+  const dir = dirOf(u.side);
+  u.mgT -= dt;
+  while(u.mgN>0 && u.mgT<=0){
+    u.mgT += u.T.mgGap; u.mgN--;
+    const pool=[];
+    for(const o of G.units){
+      if(o.side===u.side || o.dead || o.type==='miner') continue;
+      const fwd=(o.x-u.x)*dir;
+      if(fwd>-40 && fwd<=u.T.rng) pool.push(o);
+    }
+    // 앞이 비었으면 본진을 쏜다. 유닛 목록에만 물으면 본진 앞에서
+    // 총만 쏘고 체력이 안 준다.
+    const base = u.side==='a' ? G.baseB : G.baseA;
+    const bf=(base.x-u.x)*dir;
+    if(!pool.length && bf>-40 && bf<=u.T.rng) pool.push(base);
+    if(!pool.length){ u.mgN=0; return; }
+    const t = pool[Math.floor(Math.random()*pool.length)];
+    shoot(u.x+dir*u.size*.46, gy-u.size*.42+u.yo, t, u.dmg*dmgMul(u.side), u.side, 0, 0, true);
+  }
+}
+function shoot(x,y,tgt,dmg,side,splash,slow,flat){
   const tx=tgt.x, ty=tgt.T?gy-tgt.size*.6+tgt.yo:gy-70;
   const dist=Math.hypot(tx-x,ty-y);
-  G.shots.push({x0:x,y0:y,x,y,tx,ty,tgt,dmg,side,splash,slow,t:0,dur:Math.max(.22,dist/620)});
+  // 기관총 탄은 곧고 빠르다. 화살처럼 포물선을 그리면 연사로 안 보인다.
+  G.shots.push({x0:x,y0:y,x,y,tx,ty,tgt,dmg,side,splash,slow,flat,t:0,
+                dur: flat ? Math.max(.05, dist/1900) : Math.max(.22, dist/620)});
 }
 
 /** 전선 뒤 `back` px 에 자리를 잡는다. 사제·사령술사가 쓴다. */
@@ -1212,6 +1250,69 @@ function drawBase(b, side){
   ctx.restore();
 }
 
+/**
+ * 기관총 장갑차.
+ *
+ * 스틱맨 사이를 굴러다니는 물건이라 **사람처럼 그리지 않는다.** 바퀴 세 짝
+ * 위에 앞이 깎인 차체를 얹고, 포탑에서 총열이 앞으로 나온다. 여섯 발이
+ * 나가는 동안 총구 불꽃이 튄다 — 연사라는 게 눈에 보여야 한다.
+ */
+function drawAPC(u,h,col,lw){
+  const fill = u.hurt>0 ? '#f0663f' : (u.side==='a' ? '#2a4f8c' : '#8e2f2b');
+  ctx.lineJoin='round';
+
+  /* 바퀴 — 축을 함께 그려야 굴러가는 게 보인다 */
+  const wr=h*.125, roll=u.ph*.8;
+  for(const wx of [-h*.30, 0, h*.30]){
+    ctx.fillStyle='#1b2430';
+    ctx.beginPath(); ctx.arc(wx,-wr,wr,0,7); ctx.fill();
+    ctx.lineWidth=lw; ctx.beginPath(); ctx.arc(wx,-wr,wr,0,7); ctx.stroke();
+    ctx.lineWidth=lw*.7;
+    ctx.beginPath();
+    ctx.moveTo(wx-Math.cos(roll)*wr*.6, -wr-Math.sin(roll)*wr*.6);
+    ctx.lineTo(wx+Math.cos(roll)*wr*.6, -wr+Math.sin(roll)*wr*.6);
+    ctx.stroke();
+  }
+
+  /* 차체 — 앞이 비스듬히 깎인 각진 상자 */
+  const b0=-h*.19, b1=-h*.49;
+  ctx.lineWidth=lw*1.15; ctx.fillStyle=fill;
+  ctx.beginPath();
+  ctx.moveTo(-h*.43,b0); ctx.lineTo(h*.41,b0);
+  ctx.lineTo(h*.48,b1+h*.07); ctx.lineTo(h*.19,b1); ctx.lineTo(-h*.40,b1);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  /* 시야창 */
+  ctx.fillStyle='#cfe0ee';
+  ctx.fillRect(h*.21, b1+h*.025, h*.13, h*.05);
+
+  /* 포탑 */
+  ctx.fillStyle=fill;
+  ctx.beginPath();
+  ctx.moveTo(-h*.15,b1); ctx.lineTo(h*.15,b1);
+  ctx.lineTo(h*.12,b1-h*.16); ctx.lineTo(-h*.12,b1-h*.16);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  /* 총열 — 쏘는 동안 반동으로 떨린다 */
+  const kick = u.mgN>0 ? Math.sin(G.t*70)*h*.02 : 0;
+  const my = b1-h*.10;
+  ctx.lineWidth=lw*1.5;
+  ctx.beginPath(); ctx.moveTo(h*.11-kick,my); ctx.lineTo(h*.58-kick,my); ctx.stroke();
+  ctx.lineWidth=lw*.8;
+  ctx.beginPath(); ctx.moveTo(h*.19-kick,my-h*.05); ctx.lineTo(h*.32-kick,my-h*.05); ctx.stroke();
+
+  /* 총구 불꽃 */
+  if(u.mgN>0){
+    const f=h*.11*(.55+Math.random()*.7), mx=h*.58-kick;
+    ctx.fillStyle='#ffd98a';
+    ctx.beginPath();
+    ctx.moveTo(mx,my); ctx.lineTo(mx+f, my-f*.55);
+    ctx.lineTo(mx+f*1.35, my); ctx.lineTo(mx+f, my+f*.55);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.lineWidth=lw;
+}
+
 function drawUnit(u){
   const ally=u.side==='a', h=u.size;
   let dir = ally?1:-1;
@@ -1227,11 +1328,14 @@ function drawUnit(u){
   if(u.dead){
     const k=Math.min(1,u.dead/.5);
     ctx.globalAlpha=Math.max(0,1-u.dead/1.3);
-    ctx.rotate(dir*k*Math.PI/2*.92); ctx.translate(0,-2);
+    // 장갑차는 옆으로 넘어지지 않는다. 주저앉으며 기운다.
+    if(u.T.vehicle){ ctx.rotate(dir*k*.13); ctx.translate(0, k*h*.09); }
+    else { ctx.rotate(dir*k*Math.PI/2*.92); ctx.translate(0,-2); }
   }
   ctx.scale(dir,1);
   const lw=Math.max(2.2,h*.055);
   ctx.lineWidth=lw; ctx.lineCap='round'; ctx.strokeStyle=col;
+  if(u.T.vehicle){ drawAPC(u,h,col,lw); ctx.restore(); return; }
   const hipY=-h*.42, shY=-h*.72, headY=-h*.855, hr=h*.125;
   const p=Math.sin(u.ph);
 
@@ -1525,6 +1629,22 @@ ORDER.forEach(k=>{
 });
 /** 유닛 버튼 그림을 내 진영 색으로 다시 그린다. */
 function paintIcons(){ for(const k of ORDER) iconOf(btns[k].querySelector('canvas'), k); }
+/** 버튼용 장갑차 그림. drawAPC 와 같은 실루엣이다. */
+function iconAPC(x,h){
+  const wr=h*.13;
+  for(const wx of [-h*.27, 0, h*.27]){ x.beginPath(); x.arc(wx,-wr,wr,0,7); x.stroke(); }
+  x.beginPath();
+  x.moveTo(-h*.37,-h*.19); x.lineTo(h*.35,-h*.19);
+  x.lineTo(h*.42,-h*.42); x.lineTo(h*.16,-h*.49); x.lineTo(-h*.34,-h*.49);
+  x.closePath(); x.stroke();
+  x.beginPath();
+  x.moveTo(-h*.13,-h*.49); x.lineTo(h*.13,-h*.49);
+  x.lineTo(h*.10,-h*.64); x.lineTo(-h*.10,-h*.64);
+  x.closePath(); x.stroke();
+  x.lineWidth=3.4;
+  x.beginPath(); x.moveTo(h*.10,-h*.57); x.lineTo(h*.52,-h*.57); x.stroke();
+  x.lineWidth=2.6;
+}
 function iconOf(c,k){
   const x=c.getContext('2d'), h=52;
   // 다시 그릴 수 있어야 한다. 변환을 초기화하지 않으면 부를 때마다 밀린다.
@@ -1535,6 +1655,9 @@ function iconOf(c,k){
     : (k==='medic'||k==='priest' ? '#8fd8ae'
     : (k==='titan' ? '#8fd8e8' : TEAM[ME].ink));
   x.lineWidth=2.6; x.lineCap='round';
+  // 차량은 사람 뼈대를 그리기 전에 갈라져 나간다. 버튼 그림과 전장 그림의
+  // 실루엣이 같아야 무엇을 사는지 안다.
+  if(TYPES[k].vehicle){ iconAPC(x,h); return; }
   const hip=-h*.42, sh=-h*.72;
   x.beginPath();
   x.moveTo(0,hip); x.lineTo(7,hip*.5); x.lineTo(9,0);
