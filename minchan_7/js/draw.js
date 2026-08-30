@@ -1,7 +1,7 @@
 import {
-  ctx, cw, ch, dpr, camX, camY, zoom, zoomFit, TEAM, PLAYERS,
-  VERT, HUB, GATE_OFF, minePos, roadPath, alongPath, roadPoint,
-  setGeom, setCam, setZoom, setFit, clamp, dirOn, gateXOn,
+  ctx, cw, ch, dpr, camX, camY, zoom, zoomFit, TEAM,
+  GATE_OFF, MINE_OFF, EDGE_LEN, laneX,
+  setGeom, setCam, setZoom, setFit, clamp,
 } from './world.js';
 import { G, W, liveEdges } from './state.js';
 import { drawUnit } from './unitArt.js';
@@ -9,11 +9,46 @@ import { drawUnit } from './unitArt.js';
 let cv = null;
 export function attach(canvas) { cv = canvas; }
 
-/** 삼각형 전체가 들어오는 배율. 여기가 가장 멀리 물러선 자리다. */
+/* ── 줄 자리 ─────────────────────────────────────────────────────────
+ *
+ * 길 셋을 나란히 눕힌다. 매 프레임 살아 있는 변만 골라 위에서 아래로
+ * 줄을 세운다 — 하나가 무너져 둘이 되면 자연히 가운데로 모인다.
+ */
+let rows = {};
+
+/**
+ * 줄 간격.
+ *
+ * 배율은 **폭**이 정한다(길이 1560 이니 폰에서는 늘 폭이 먼저 찬다). 그러면
+ * 세로가 많이 남는데, 간격을 그만큼 벌려 남는 자리를 쓴다. 화면이 넓어지면
+ * 자연히 좁아진다.
+ */
+function gapFor(n) {
+  const zw = cw / (EDGE_LEN + 300);
+  return clamp((ch / Math.max(1e-6, zw) - 300) / Math.max(1, n), 520, 1200);
+}
+function layout() {
+  const live = G ? liveEdges() : [];
+  const g = gapFor(live.length || 3);
+  rows = {};
+  live.forEach((E, i) => { rows[E.id] = (i - (live.length - 1) / 2) * g; });
+  return live;
+}
+/** 변 위의 (거리, 지면 위 높이) 를 화면 좌표로. */
+function pt(E, x, h) { return { x: laneX(E, x), y: (rows[E.id] || 0) + (h || 0) }; }
+
+/* ── 카메라 ─────────────────────────────────────────────────────────── */
+
+function bounds() {
+  // 판이 열리기 전에도 화면 크기는 잡아야 한다. 그때는 기본 세 줄로 친다.
+  const live = G ? liveEdges() : [];
+  const wide = live.length ? Math.max(EDGE_LEN, ...live.map(E => E.len)) : EDGE_LEN;
+  const n = live.length || 3;
+  return { w: wide + 300, h: n * gapFor(n) + 300 };
+}
 function fitZoom() {
-  const pad = 150;
-  const w = 2 * (Math.abs(VERT.c.x) + pad), h = (VERT.b.y - VERT.a.y) + pad * 2;
-  return Math.min(cw / w, ch / h);
+  const b = bounds();
+  return Math.min(cw / b.w, ch / b.h);
 }
 
 export function resize() {
@@ -26,23 +61,18 @@ export function resize() {
   setZoom(zoom < f * 1.02 ? f : zoom);
 }
 
-/** 삼각형 전체가 보이도록 물러선다. */
-export function survey() { setFit(fitZoom()); setZoom(fitZoom()); setCam(HUB.x, HUB.y); }
+/** 세 길이 다 보이도록 물러선다. */
+export function survey() { const f = fitZoom(); setFit(f); setZoom(f); setCam(0, 0); }
 
-
-/** 그 변을 화면 가운데로. 배율은 건드리지 않는다. */
+/** 그 줄을 화면 가운데로. 배율은 건드리지 않는다. */
 export function focus(E) {
-  if (!E || zoom <= zoomFit * 1.05) return;   // 전체가 보이는 중이면 그대로 둔다
-  const p = roadPoint(E, E.front, 0);
-  setCam(p.x, p.y - 90);
+  if (!E || zoom <= zoomFit * 1.05) return;
+  setCam(0, rows[E.id] || 0);
 }
 
 /**
- * 카메라는 **따라다니지 않는다.**
- *
- * 전선을 고를 때마다 화면이 그쪽으로 미끄러지게 해 봤더니, 삼각형 위에서는
- * 그 움직임이 방향 감각을 흐트러뜨렸다. 세 길이 늘 같은 자리에 있어야
- * 어디가 어디인지 안다. 옮기고 싶으면 손으로 끈다.
+ * 카메라는 **따라다니지 않는다.** 전선을 고를 때마다 화면이 미끄러지면
+ * 어디가 어디인지 알 수 없게 된다. 옮기고 싶으면 손으로 끈다.
  */
 export function follow() {}
 
@@ -53,28 +83,19 @@ export function zoomBy(f, ax, ay) {
   const after = toWorld(ax, ay);
   setCam(camX + (before.x - after.x), camY + (before.y - after.y));
 }
-/** 화면 좌표 → 전장 좌표. */
 export function toWorld(sx, sy) {
   return { x: camX + (sx - cw / 2) / zoom, y: camY + (sy - ch / 2) / zoom };
 }
 
-/** 눌린 자리에서 가장 가까운 길. 그 전선을 고르는 데 쓴다. */
+/** 눌린 줄. 그 전선을 고르는 데 쓴다. */
 export function pickEdge(sx, sy) {
   const w = toWorld(sx, sy);
-  let best = null, bd = 150 / zoom;
+  let best = null, bd = gapFor(liveEdges().length) * .5;
   for (const E of liveEdges()) {
-    const pts = roadPath(E);
-    for (let i = 0; i < pts.length - 1; i++) {
-      const d = distSeg(w, pts[i], pts[i + 1]);
-      if (d < bd) { bd = d; best = E.id; }
-    }
+    const d = Math.abs(w.y - (rows[E.id] || 0));
+    if (d < bd) { bd = d; best = E.id; }
   }
   return best;
-}
-function distSeg(p, a, b) {
-  const vx = b.x - a.x, vy = b.y - a.y, L = vx * vx + vy * vy;
-  const t = L ? clamp(((p.x - a.x) * vx + (p.y - a.y) * vy) / L, 0, 1) : 0;
-  return Math.hypot(p.x - (a.x + vx * t), p.y - (a.y + vy * t));
 }
 
 /* ── 그리기 ─────────────────────────────────────────────────────────── */
@@ -83,74 +104,84 @@ export function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#e9eef2'; ctx.fillRect(0, 0, cw, ch);
   if (!G) return;
+  const live = layout();
 
   const sh = G.shake > 0 ? G.shake * 9 : 0;
   const sx = sh ? (Math.random() - .5) * sh : 0, sy = sh ? (Math.random() - .5) * sh : 0;
   ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom,
     (cw / 2 - (camX - sx) * zoom) * dpr, (ch / 2 - (camY - sy) * zoom) * dpr);
 
-  grid();
-  for (const E of liveEdges()) road(E);
-  for (const w of PLAYERS) mine(w);
-  for (const E of liveEdges()) if (E.via) ruin(E);
-  for (const w of PLAYERS) castle(w);
+  for (const E of live) lane(E);
 
-  // 병사는 **길 위에 서 있되 기울지 않는다.** 아래쪽에 있는 것을 나중에
-  // 그려 앞으로 나오게 한다.
+  // 병사는 아래 줄이 앞이다. 같은 줄 안에서는 lane 값으로 앞뒤를 가른다.
   const cast = [];
-  for (const E of liveEdges()) {
+  for (const E of live) {
     for (const u of E.units) {
-      const p = roadPoint(E, u.x, u.yo);
+      const p = pt(E, u.x, u.yo);
       u.px = p.x; u.py = p.y; cast.push(u);
     }
-  }
-  for (const w of PLAYERS) {
-    const P = W(w); if (!P.alive) continue;
-    const v = VERT[w], m = minePos(w);
-    for (const mi of P.miners) {
-      const k = mi.hx / 94;
-      mi.px = v.x + (m.x - v.x) * k; mi.py = v.y + (m.y - v.y) * k;
-      mi.dir = m.x >= v.x ? -1 : 1;      // 광산 쪽을 보고 걷는다
-      cast.push(mi);
+    for (const pos of ['p', 'q']) {
+      const who = pos === 'p' ? E.p : E.q;
+      const P = W(who);
+      // 광부는 자기가 **왼쪽 끝인 줄에만** 세운다. 두 줄에 다 그리면 같은
+      // 여섯 명이 두 번 보여 몇 명인지 알 수 없게 된다.
+      if (!P || !P.alive || pos !== 'p') continue;
+      for (const m of P.miners) {
+        const p = pt(E, GATE_OFF - m.hx, 0);
+        m.px = p.x; m.py = p.y; m.dir = 1; cast.push(m);
+      }
     }
   }
-  cast.sort((a, b) => a.py - b.py);
+  cast.sort((a, b) => (a.py - b.py) || (a.yo - b.yo));
   for (const u of cast) drawUnit(u);
 
-  for (const E of liveEdges()) fx(E);
+  for (const E of live) fx(E);
 }
 
-function grid() {
-  const g = 90, L = camX - cw / 2 / zoom, R = camX + cw / 2 / zoom;
-  const T = camY - ch / 2 / zoom, B = camY + ch / 2 / zoom;
-  ctx.strokeStyle = '#dde5eb'; ctx.lineWidth = 1 / zoom;
+/** 줄 하나 — minchan_6 의 가로 전장 그대로다. */
+function lane(E) {
+  const y = rows[E.id];
+  const L = laneX(E, 0), R = laneX(E, E.len);
+
+  // 땅
+  ctx.fillStyle = '#d5dfe7'; ctx.beginPath(); ctx.moveTo(L, y);
+  for (let x = L; x < R + 44; x += 44) ctx.lineTo(x, y - 40 - Math.sin(x * .004) * 20 - Math.sin(x * .011) * 9);
+  ctx.lineTo(R, y); ctx.closePath(); ctx.fill();
+
+  ctx.strokeStyle = '#1b2430'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(L - 20, y); ctx.lineTo(R + 20, y); ctx.stroke();
+  ctx.fillStyle = '#dbe3ea'; ctx.fillRect(L - 20, y, (R - L) + 40, 46);
+  ctx.strokeStyle = '#c2ced8'; ctx.lineWidth = 2;
   ctx.beginPath();
-  for (let x = Math.floor(L / g) * g; x < R + g; x += g) { ctx.moveTo(x, T); ctx.lineTo(x, B); }
-  for (let y = Math.floor(T / g) * g; y < B + g; y += g) { ctx.moveTo(L, y); ctx.lineTo(R, y); }
+  for (let x = L; x < R; x += 26) { ctx.moveTo(x, y + 5); ctx.lineTo(x - 9, y + 16); }
   ctx.stroke();
-}
 
-/** 길. 이 위를 병사가 걷는다. */
-function road(E) {
-  const pts = roadPath(E), on = E.id === G.view;
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.strokeStyle = '#cdd8e1'; ctx.lineWidth = 78;
-  ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
-  ctx.strokeStyle = on ? '#b6c6d4' : '#dfe7ed'; ctx.lineWidth = 66;
-  ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+  // 지금 고른 전선은 밑줄로 알린다.
+  if (E.id === G.view) {
+    ctx.strokeStyle = TEAM[G.P[E.p].alive ? E.p : E.q].c;
+    ctx.globalAlpha = .5; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(L - 20, y + 50); ctx.lineTo(R + 20, y + 50); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
-  // 전선. 어느 쪽이 밀고 있는지를 길 위에 못 박는다.
-  const f = roadPoint(E, E.front, 0);
+  for (const pos of ['p', 'q']) {
+    const g = pos === 'p' ? E.gp : E.gq;
+    mine(E, pos); gate(E, g, pos);
+  }
+  if (E.via) ruin(E);
+
+  // 전선 눈금
+  const f = pt(E, E.front, 0);
   const t = E.front / E.len;
   ctx.strokeStyle = t < .5 ? TEAM[E.q].c : TEAM[E.p].c;
-  ctx.lineWidth = 5; ctx.globalAlpha = .75;
-  ctx.beginPath(); ctx.moveTo(f.x, f.y - 42); ctx.lineTo(f.x, f.y + 12); ctx.stroke();
+  ctx.lineWidth = 5; ctx.globalAlpha = .7;
+  ctx.beginPath(); ctx.moveTo(f.x, f.y - 46); ctx.lineTo(f.x, f.y + 10); ctx.stroke();
   ctx.globalAlpha = 1;
 }
 
-function mine(who) {
-  const P = W(who); if (!P.alive) return;
-  const m = minePos(who), x = m.x, y = m.y;
+function mine(E, pos) {
+  const x = laneX(E, pos === 'p' ? MINE_OFF : E.len - MINE_OFF);
+  const y = rows[E.id];
   ctx.save(); ctx.lineWidth = 3; ctx.lineJoin = 'round';
   ctx.strokeStyle = '#1b2430'; ctx.fillStyle = '#e3ebf1';
   ctx.beginPath();
@@ -164,52 +195,60 @@ function mine(who) {
   ctx.restore();
 }
 
-function castle(who) {
-  const P = W(who), T = TEAM[who], v = VERT[who];
-  const w = 78, h = 150, x = v.x, top = v.y - h;
-  ctx.save(); ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1b2430';
+function gate(E, g, pos) {
+  const P = W(g.owner), T = TEAM[g.owner];
+  const x = laneX(E, g.x), y = rows[E.id];
+  const w = 64, h = 128, top = y - h, out = pos === 'p' ? 1 : -1;
+  ctx.save(); ctx.lineWidth = 3.4; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1b2430';
   ctx.fillStyle = P.alive ? '#f4f8fa' : '#c9d2da';
   ctx.beginPath(); ctx.rect(x - w / 2, top, w, h); ctx.fill(); ctx.stroke();
   for (let i = 0; i < 3; i++) {
-    ctx.beginPath(); ctx.rect(x - w / 2 + i * (w / 3) + 3, top - 17, w / 3 - 7, 17); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(x - w / 2 + i * (w / 3) + 3, top - 14, w / 3 - 6, 14); ctx.fill(); ctx.stroke();
   }
-  ctx.beginPath(); ctx.rect(x - 16, v.y - 54, 32, 54); ctx.stroke();
+  ctx.beginPath(); ctx.rect(x - 13, y - 46, 26, 46); ctx.stroke();
   if (P.alive) {
-    ctx.beginPath(); ctx.moveTo(x, top - 17); ctx.lineTo(x, top - 74); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, top - 14); ctx.lineTo(x, top - 62); ctx.stroke();
     ctx.fillStyle = T.c;
-    const f = Math.sin(G.t * 4) * 5;
-    ctx.beginPath(); ctx.moveTo(x, top - 74); ctx.lineTo(x + 42, top - 66 + f); ctx.lineTo(x, top - 50);
+    const f = Math.sin(G.t * 4) * 4;
+    ctx.beginPath(); ctx.moveTo(x, top - 62); ctx.lineTo(x + out * 34, top - 55 + f); ctx.lineTo(x, top - 42);
     ctx.closePath(); ctx.fill();
-    const r = Math.max(0, P.hp / P.max), bw = 96;
-    ctx.fillStyle = '#c7d2dc'; ctx.fillRect(x - bw / 2, top - 100, bw, 11);
-    ctx.fillStyle = T.c; ctx.fillRect(x - bw / 2, top - 100, bw * r, 11);
-    ctx.strokeStyle = '#1b2430'; ctx.lineWidth = 2; ctx.strokeRect(x - bw / 2, top - 100, bw, 11);
+    if (P.up.turret > 0) {
+      ctx.strokeStyle = T.c; ctx.lineWidth = 3;
+      const tx = x + out * 7;
+      ctx.beginPath(); ctx.arc(tx, top - 28, 6, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx, top - 22); ctx.lineTo(tx, top - 6); ctx.stroke();
+    }
+    const r = Math.max(0, g.hp / g.max), bw = 80;
+    ctx.fillStyle = '#c7d2dc'; ctx.fillRect(x - bw / 2, top - 86, bw, 10);
+    ctx.fillStyle = T.c; ctx.fillRect(x - bw / 2, top - 86, bw * r, 10);
+    ctx.strokeStyle = '#1b2430'; ctx.lineWidth = 2; ctx.strokeRect(x - bw / 2, top - 86, bw, 10);
   }
   ctx.fillStyle = P.alive ? T.c : '#7d8a95';
-  ctx.font = '800 26px Nanum Gothic, sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(T.nm + (P.alive ? '' : ' ✝'), x, v.y + 34);
+  ctx.font = '800 30px Nanum Gothic, sans-serif';
+  ctx.textAlign = pos === 'p' ? 'left' : 'right';
+  ctx.fillText(T.nm + (P.alive ? '' : ' ✝'), x + out * (w / 2 + 10), y + 34);
   ctx.restore();
 }
 
 /** 무너진 성. 두 길을 이어 붙인 자리에 남는다. */
 function ruin(E) {
-  const v = VERT[E.via], x = v.x, y = v.y;
+  const x = laneX(E, E.ruin), y = rows[E.id];
   ctx.save(); ctx.lineWidth = 3.4; ctx.lineJoin = 'round';
   ctx.strokeStyle = '#6b7785'; ctx.fillStyle = '#cfd8e0';
   ctx.beginPath();
-  ctx.moveTo(x - 44, y); ctx.lineTo(x - 38, y - 78); ctx.lineTo(x - 15, y - 56);
-  ctx.lineTo(x + 3, y - 98); ctx.lineTo(x + 21, y - 50); ctx.lineTo(x + 42, y - 70);
+  ctx.moveTo(x - 44, y); ctx.lineTo(x - 38, y - 74); ctx.lineTo(x - 15, y - 52);
+  ctx.lineTo(x + 3, y - 94); ctx.lineTo(x + 21, y - 46); ctx.lineTo(x + 42, y - 66);
   ctx.lineTo(x + 46, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#8a94a3'; ctx.font = '700 22px Nanum Gothic, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(TEAM[E.via].nm + ' 폐허', x, y + 30);
   ctx.restore();
 }
 
-/* ── 자국들 ─────────────────────────────────────────────────────────
- *
- * 전투 코드는 자국을 (변 위 x, 지면 위 높이) 로 만든다. 여기서 길 위의
- * 점으로 옮겨 준다 — 그 한 번의 변환으로 1D 시절 코드가 전부 살아난다.
- */
+/* ── 자국들 ───────────────────────────────────────────────────────── */
+
 function fx(E) {
-  const P = (x, y) => roadPoint(E, x, y);
+  const P = (x, y) => pt(E, x, y);
 
   for (const b of E.beams) {
     const p1 = P(b.x1, b.y), p2 = P(b.x2, b.y);
