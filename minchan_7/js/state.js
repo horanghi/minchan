@@ -1,14 +1,24 @@
 import {
   PLAYERS, EDGE_IDS, EDGE_ENDS, EDGE_LEN, GATE_OFF, HOME_LEN, MERGED_MUL,
-  BODY_GAP, dirOn, gateXOn, foeOn,
+  BODY_GAP, ART, dirOn, gateXOn, foeOn,
 } from './world.js';
 import { TYPES } from './types.js';
 
 /** 판 전체 상태. newGame 이 통째로 갈아끼운다(모듈 바인딩은 살아 있다). */
 export let G = null;
 
-/** 시작 조건. 셋 다 똑같다 — 삼각전에서 비대칭은 그 자체로 불만이 된다. */
-export const SETUP = { gold: 420, castle: 3200, mineT: 2.2 };
+/**
+ * 시작 조건. 셋 다 똑같다 — 삼각전에서 비대칭은 그 자체로 불만이 된다.
+ *
+ * **성 체력은 1:1 때보다 낮다.** 성은 하나인데 전선이 둘이라, 전선 하나에
+ * 걸리는 압력이 1:1 의 절반이다. minchan_6 수준(3200)을 그대로 두면 아무도
+ * 성문에 닿지 못한다 — 셋을 15분 붙여 보니 성이 한 대도 안 깎이고 오히려
+ * 성벽 보강으로 3800 까지 올라갔다.
+ *
+ * 그렇다고 1600 까지 내리면 반대로 **한 전선이 뚫리는 순간 1분 만에 끝난다.**
+ * 두 방향에서 동시에 맞는 자리라 되돌릴 틈이 없다. 2400 이 그 사이다.
+ */
+export const SETUP = { gold: 520, castle: 2400, mineT: 2.2 };
 
 let uid = 0;
 
@@ -85,7 +95,25 @@ export function edgesOf(who) {
   return liveEdges().filter(E => E.p === who || E.q === who);
 }
 export function minerCount(who) { return G.P[who].miners.length; }
-export function haul(who) { return 14 + G.P[who].up.mine * 5; }
+/**
+ * 광부가 한 번에 캐 오는 양.
+ *
+ * 두 가지가 얹힌다.
+ *
+ * **광맥이 갈수록 깊어진다.** 수입이 고정이면 셋이 서로 막기만 하다 판이
+ * 끝나지 않는다 — 15분을 돌려도 양쪽 병력이 열 명 언저리에서 맴돌았다.
+ *
+ * **한 명이 무너지면 남은 둘의 광맥이 더 깊어진다.** 폐허가 된 땅을 나눠
+ * 가진 값이다. 이게 없으면 둘만 남은 뒤 다시 2전선 대치가 되어 앞과 똑같이
+ * 늘어진다 — 첫 함락은 10분 안에 나는데 마무리가 안 됐다.
+ */
+export function haul(who) {
+  const left = PLAYERS.filter(w => G.P[w].alive).length;
+  // 1.7 배는 과했다 — 먼저 하나가 죽는 순간 그때 건강하던 쪽이 그대로
+  // 굴러가 뒤집을 여지가 없어진다. 1.3 은 반대로 마무리가 안 됐다(5판 중 3판).
+  // 마무리를 돕되 판을 정해 버리지는 않는 선이 1.5 다.
+  return (14 + G.P[who].up.mine * 5) * (1 + G.t / 240) * (left < 3 ? 1.5 : 1);
+}
 export function dmgMul(who) { return 1 + G.P[who].up.dmg * 0.10; }
 /** 이 유닛이 이 변에서 두들기는 성문. */
 export function foeGate(u) { return u.dir > 0 ? u.E.gq : u.E.gp; }
@@ -102,7 +130,7 @@ export function spawn(type, who, E, m) {
     id: ++uid, type, T, own: who, E, dir,
     x: gateXOn(E, who) + dir * 22,
     hp: T.hp * m.hp, max: T.hp * m.hp,
-    dmg: T.dmg * (m.dmg || 1), size: T.size * (m.size || 1),
+    dmg: T.dmg * (m.dmg || 1), size: T.size * (m.size || 1) * ART,
     cd: .3, ph: Math.random() * 6, sw: 0, dead: 0, hurt: 0, slowT: 0,
     chg: 0, combo: 0, ward: 0, mgN: 0, mgT: 0,
     lane, yo: (lane - 3) * 5,
@@ -127,7 +155,7 @@ export function spawnMiner(who) {
   const T = TYPES.miner;
   G.P[who].miners.push({
     id: ++uid, type: 'miner', T, own: who,
-    hp: T.hp, max: T.hp, size: T.size, dmg: 0,
+    hp: T.hp, max: T.hp, size: T.size * ART, dmg: 0,
     job: 'toMine', jobT: 0, carry: 0, hx: 0,
     ph: Math.random() * 6, sw: 0, dead: 0, hurt: 0, slowT: 0, ward: 0,
     lane: 3, yo: 0, x: 0, dir: 1,

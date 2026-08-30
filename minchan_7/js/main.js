@@ -1,5 +1,9 @@
 import { PLAYERS, TEAM, setCtx } from './world.js';
-import { G, newGame, W, edgesOf } from './state.js';
+import { G, newGame, W, edgesOf, minerCount } from './state.js';
+import { buy } from './shop.js';
+import { UPS, upCost, buyUp } from './upgrades.js';
+import { castRain } from './combat.js';
+import { readEdge } from './aiRead.js';
 import { step } from './step.js';
 import { stepAll } from './ai.js';
 import { LEVELS } from './ai.js';
@@ -143,6 +147,16 @@ if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
       get G() { return G; }, start, step, stepAll,
       seat(w, v) { seats[w] = v; },
       draw: () => draw.draw(), ui, view: draw,
+      /** 시험용 판. 사람 자리 검사를 건너뛰고 셋 다 컴퓨터로 세울 수 있다. */
+      lab(s3) {
+        newGame(s3);
+        ui.setMe('a');
+        G.view = edgesOf('a')[0].id;
+        ui.buildTabs(); draw.survey();
+        ui.closeLobby(); ui.hideOver(); overShown = false;
+      },
+      /** 옛 정책을 밖에서 돌려 붙여 보기 위한 손잡이. */
+      api: { buy, buyUp, upCost, UPS, castRain, edgesOf, minerCount, readEdge },
     },
   });
 }

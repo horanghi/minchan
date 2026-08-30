@@ -2,7 +2,7 @@ import { TEAM, PLAYERS, MAX_MINERS, ULT_CD, GATE_OFF, foeOn, dirOn } from './wor
 import { TYPES, ORDER } from './types.js';
 import { G, W, edgesOf, minerCount, haul } from './state.js';
 import { buy } from './shop.js';
-import { UPS, upCost, buyUp } from './upgrades.js';
+import { UPS, upCost, buyUp, upMaxed } from './upgrades.js';
 import { castRain } from './combat.js';
 import { iconOf, setInk } from './icons.js';
 import { focus } from './draw.js';
@@ -141,10 +141,12 @@ export function cycleView(step) {
 export function renderUps() {
   const P = W(ME);
   el('uplist').innerHTML = UPS.map(u => {
-    const lv = P.up[u.k], cost = u.c(lv);
+    const lv = P.up[u.k], done = upMaxed(ME, u.k);
     return '<div class="up"><div class="ic">' + u.ic + '</div><div class="tx"><b>' + u.nm
-      + ' <span style="color:#8ea0b2">Lv.' + lv + '</span></b><small>' + u.d(lv + 1) + '</small></div>'
-      + '<button data-k="' + u.k + '">' + cost + '</button></div>';
+      + ' <span style="color:#8ea0b2">Lv.' + lv + (u.max ? '/' + u.max : '') + '</span></b><small>'
+      + (done ? '더 덧댈 수 없다' : u.d(lv + 1)) + '</small></div>'
+      + '<button data-k="' + u.k + '"' + (done ? ' disabled' : '') + '>'
+      + (done ? '최대' : u.c(lv)) + '</button></div>';
   }).join('');
   el('uplist').querySelectorAll('button').forEach(b => {
     b.addEventListener('click', () => { if (buyUp(ME, b.dataset.k)) { renderUps(); beep(660, .1, .04); } });
@@ -156,7 +158,7 @@ export function syncUps() {
   if (!el('modal').classList.contains('on')) return;
   const P = W(ME);
   el('uplist').querySelectorAll('button').forEach(b => {
-    b.disabled = P.gold < upCost(ME, b.dataset.k);
+    b.disabled = upMaxed(ME, b.dataset.k) || P.gold < upCost(ME, b.dataset.k);
   });
 }
 
