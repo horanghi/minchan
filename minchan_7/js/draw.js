@@ -1,5 +1,5 @@
 import {
-  ctx, cw, ch, dpr, camX, camY, zoom, zoomFit, TEAM,
+  ctx, cw, ch, dpr, camX, camY, zoom, zoomFit, TEAM, ME,
   GATE_OFF, MINE_OFF, EDGE_LEN, laneX,
   setGeom, setCam, setZoom, setFit, clamp,
 } from './world.js';
@@ -23,19 +23,46 @@ let rows = {};
  * 세로가 많이 남는데, 간격을 그만큼 벌려 남는 자리를 쓴다. 화면이 넓어지면
  * 자연히 좁아진다.
  */
+/** 배너가 첫 줄을 가리지 않게 위를 이만큼(화면 px) 비워 둔다. */
+const TOP_PAD = 74;
 function gapFor(n) {
   const zw = cw / (EDGE_LEN + 300);
-  return clamp((ch / Math.max(1e-6, zw) - 300) / Math.max(1, n), 520, 1200);
+  return clamp(((ch - TOP_PAD) / Math.max(1e-6, zw) - 300) / Math.max(1, n), 520, 1200);
 }
+/**
+ * 줄을 세운다.
+ *
+ * 두 가지를 맞춘다.
+ *
+ * **내 전선을 위로.** 내가 지켜야 할 둘이 먼저 눈에 들어와야 한다. 내가
+ * 끼지 않은 싸움은 아래에 둔다.
+ *
+ * **내 성은 늘 왼쪽.** 변마다 내가 p 였다 q 였다 하는데, 그대로 그리면 줄마다
+ * 내 성이 왼쪽이었다 오른쪽이었다 해서 **미는 방향이 뒤집힌다.** 내가
+ * 오른쪽 끝인 변은 좌우를 뒤집어 눕힌다.
+ */
+let flips = {};
 function layout() {
-  const live = G ? liveEdges() : [];
+  const all = G ? liveEdges() : [];
+  const mine = all.filter(E => E.p === ME || E.q === ME);
+  const rest = all.filter(E => !mine.includes(E));
+  const live = [...mine, ...rest];
   const g = gapFor(live.length || 3);
-  rows = {};
-  live.forEach((E, i) => { rows[E.id] = (i - (live.length - 1) / 2) * g; });
+  rows = {}; flips = {};
+  live.forEach((E, i) => {
+    rows[E.id] = (i - (live.length - 1) / 2) * g;
+    flips[E.id] = E.q === ME;
+  });
   return live;
 }
+/** 이 줄이 뒤집혀 있나. 뒤집혔으면 화면 왼쪽이 q 다. */
+function flipped(E) { return !!flips[E.id]; }
+/** 뒤집힘을 반영한 좌우 부호. */
+function sgn(E) { return flipped(E) ? -1 : 1; }
 /** 변 위의 (거리, 지면 위 높이) 를 화면 좌표로. */
-function pt(E, x, h) { return { x: laneX(E, x), y: (rows[E.id] || 0) + (h || 0) }; }
+function pt(E, x, h) {
+  return { x: laneX(E, x) * sgn(E), y: (rows[E.id] || 0) + (h || 0) };
+}
 
 /* ── 카메라 ─────────────────────────────────────────────────────────── */
 
@@ -62,7 +89,12 @@ export function resize() {
 }
 
 /** 세 길이 다 보이도록 물러선다. */
-export function survey() { const f = fitZoom(); setFit(f); setZoom(f); setCam(0, 0); }
+export function survey() {
+  const f = fitZoom();
+  setFit(f); setZoom(f);
+  // 비워 둔 윗자리만큼 내려 앉힌다.
+  setCam(0, -(TOP_PAD / 2) / f);
+}
 
 /** 그 줄을 화면 가운데로. 배율은 건드리지 않는다. */
 export function focus(E) {
@@ -115,20 +147,31 @@ export function draw() {
 
   // 병사는 아래 줄이 앞이다. 같은 줄 안에서는 lane 값으로 앞뒤를 가른다.
   const cast = [];
+  const drew = new Set();          // 광부를 이미 세운 사람
   for (const E of live) {
+    const s = sgn(E);
     for (const u of E.units) {
       const p = pt(E, u.x, u.yo);
-      u.px = p.x; u.py = p.y; cast.push(u);
+      u.px = p.x; u.py = p.y; u.face = u.dir * s; cast.push(u);
     }
+    // 광부는 **사람마다 딱 한 줄에만** 세운다.
+    //
+    // 성은 두 줄에 나타나는데 광부까지 두 번 그리면 같은 여섯 명이 두 번
+    // 보여 몇 명인지 알 수 없다. 반대로 한쪽 끝에만 그리면 늘 오른쪽에
+    // 서는 사람은 광부가 아예 안 보인다. 그래서 **처음 만나는 줄**에 세운다.
     for (const pos of ['p', 'q']) {
       const who = pos === 'p' ? E.p : E.q;
       const P = W(who);
-      // 광부는 자기가 **왼쪽 끝인 줄에만** 세운다. 두 줄에 다 그리면 같은
-      // 여섯 명이 두 번 보여 몇 명인지 알 수 없게 된다.
-      if (!P || !P.alive || pos !== 'p') continue;
+      if (!P || !P.alive || drew.has(who)) continue;
+      drew.add(who);
+      const onLeft = (pos === 'p') !== flipped(E);
       for (const m of P.miners) {
-        const p = pt(E, GATE_OFF - m.hx, 0);
-        m.px = p.x; m.py = p.y; m.dir = 1; cast.push(m);
+        const x = pos === 'p' ? GATE_OFF - m.hx : E.len - GATE_OFF + m.hx;
+        const p = pt(E, x, 0);
+        m.px = p.x; m.py = p.y;
+        // 광산은 늘 자기 성의 바깥쪽이다. 캐러 갈 때 그쪽을 본다.
+        m.face = (m.job === 'toMine' ? -1 : 1) * (onLeft ? 1 : -1);
+        cast.push(m);
       }
     }
   }
@@ -166,7 +209,7 @@ function lane(E) {
 
   for (const pos of ['p', 'q']) {
     const g = pos === 'p' ? E.gp : E.gq;
-    mine(E, pos); gate(E, g, pos);
+    mine(E, pos); gate(E, g);
   }
   if (E.via) ruin(E);
 
@@ -180,7 +223,7 @@ function lane(E) {
 }
 
 function mine(E, pos) {
-  const x = laneX(E, pos === 'p' ? MINE_OFF : E.len - MINE_OFF);
+  const x = pt(E, pos === 'p' ? MINE_OFF : E.len - MINE_OFF, 0).x;
   const y = rows[E.id];
   ctx.save(); ctx.lineWidth = 3; ctx.lineJoin = 'round';
   ctx.strokeStyle = '#1b2430'; ctx.fillStyle = '#e3ebf1';
@@ -195,10 +238,13 @@ function mine(E, pos) {
   ctx.restore();
 }
 
-function gate(E, g, pos) {
+function gate(E, g) {
   const P = W(g.owner), T = TEAM[g.owner];
-  const x = laneX(E, g.x), y = rows[E.id];
-  const w = 64, h = 128, top = y - h, out = pos === 'p' ? 1 : -1;
+  const x = pt(E, g.x, 0).x, y = rows[E.id];
+  // 깃발과 이름은 **화면에서 바깥쪽**을 본다. p/q 로 정하면 뒤집힌 줄에서
+  // 깃발이 성 안쪽을 향한다.
+  const out = x < 0 ? 1 : -1;
+  const w = 64, h = 128, top = y - h;
   ctx.save(); ctx.lineWidth = 3.4; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1b2430';
   ctx.fillStyle = P.alive ? '#f4f8fa' : '#c9d2da';
   ctx.beginPath(); ctx.rect(x - w / 2, top, w, h); ctx.fill(); ctx.stroke();
@@ -225,14 +271,14 @@ function gate(E, g, pos) {
   }
   ctx.fillStyle = P.alive ? T.c : '#7d8a95';
   ctx.font = '800 30px Nanum Gothic, sans-serif';
-  ctx.textAlign = pos === 'p' ? 'left' : 'right';
+  ctx.textAlign = out > 0 ? 'left' : 'right';
   ctx.fillText(T.nm + (P.alive ? '' : ' ✝'), x + out * (w / 2 + 10), y + 34);
   ctx.restore();
 }
 
 /** 무너진 성. 두 길을 이어 붙인 자리에 남는다. */
 function ruin(E) {
-  const x = laneX(E, E.ruin), y = rows[E.id];
+  const x = pt(E, E.ruin, 0).x, y = rows[E.id];
   ctx.save(); ctx.lineWidth = 3.4; ctx.lineJoin = 'round';
   ctx.strokeStyle = '#6b7785'; ctx.fillStyle = '#cfd8e0';
   ctx.beginPath();

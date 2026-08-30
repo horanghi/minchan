@@ -1,4 +1,4 @@
-import { TEAM, PLAYERS, MAX_MINERS, ULT_CD, GATE_OFF, foeOn, dirOn } from './world.js';
+import { TEAM, PLAYERS, MAX_MINERS, ULT_CD, GATE_OFF, foeOn, dirOn, setMe as setWorldMe } from './world.js';
 import { TYPES, ORDER } from './types.js';
 import { G, W, edgesOf, minerCount, haul } from './state.js';
 import { buy } from './shop.js';
@@ -15,6 +15,7 @@ let bannerT = null, bannerHold = 0;
 
 export function setMe(who) {
   ME = who;
+  setWorldMe(who);
   document.documentElement.style.setProperty('--me', TEAM[who].c);
   setInk(TEAM[who].ink);
   paintIcons();

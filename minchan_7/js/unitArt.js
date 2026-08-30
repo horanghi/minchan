@@ -77,8 +77,9 @@ export function drawAPC(u,h,col,lw){
 
 export function drawUnit(u){
   const h=u.size;
-  // 광부는 광산을 오가며 몸을 돌린다. 나머지는 나아가는 쪽을 본다.
-  let dir = u.type==='miner' ? u.dir * (u.job==='toMine' ? -1 : 1) : u.dir;
+  // 바라보는 쪽은 그리는 쪽이 정해 준다(`u.face`). 줄이 좌우로 뒤집힐 수
+  // 있어서, 나아가는 방향과 화면에서 보는 방향이 늘 같지는 않다.
+  let dir = u.face || u.dir || 1;
   // T.col 이 있으면 그 색을 쓴다. 3판에 적 다섯 종이 섞여 나오는데 전부
   // 같은 빨강이면 무엇이 오는지 구분할 수 없다.
   const col = u.hurt>0 ? '#f0663f'
