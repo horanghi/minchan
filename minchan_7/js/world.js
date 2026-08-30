@@ -39,6 +39,15 @@ export const TEAM = {
   c: { nm: '초록', c: '#2f8f4e', dark: '#22633a', ink: '#8ad8a4' },
 };
 
+/**
+ * 유닛 그림 배율.
+ *
+ * `size` 는 **순수하게 그림용**이다 — 사거리·피해 어디에도 안 쓰인다.
+ * 세 길을 늘 한 화면에 담으므로 배율로만 크기를 벌 수 있다. 전투는 한
+ * 눈금도 달라지지 않는다.
+ */
+export const ART = 1.85;
+
 export const MAX_MINERS = 10;
 /** 적과 최소한 이만큼은 떨어져 선다 (px). */
 export const BODY_GAP = 14;

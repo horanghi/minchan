@@ -11,7 +11,7 @@ export function attach(canvas) { cv = canvas; }
 
 /** 삼각형 전체가 들어오는 배율. 여기가 가장 멀리 물러선 자리다. */
 function fitZoom() {
-  const pad = 260;
+  const pad = 150;
   const w = 2 * (Math.abs(VERT.c.x) + pad), h = (VERT.b.y - VERT.a.y) + pad * 2;
   return Math.min(cw / w, ch / h);
 }
@@ -29,21 +29,22 @@ export function resize() {
 /** 삼각형 전체가 보이도록 물러선다. */
 export function survey() { setFit(fitZoom()); setZoom(fitZoom()); setCam(HUB.x, HUB.y); }
 
-/** 그 변의 전선으로 파고든다. */
-export function focus(E, z) {
-  if (!E) return;
+
+/** 그 변을 화면 가운데로. 배율은 건드리지 않는다. */
+export function focus(E) {
+  if (!E || zoom <= zoomFit * 1.05) return;   // 전체가 보이는 중이면 그대로 둔다
   const p = roadPoint(E, E.front, 0);
-  setZoom(z || Math.max(zoomFit, .62));
   setCam(p.x, p.y - 90);
 }
 
-export function follow(dt) {
-  const E = G.E[G.view];
-  if (!E || zoom <= zoomFit * 1.05) return;   // 물러서서 볼 때는 따라가지 않는다
-  const p = roadPoint(E, E.front, 0);
-  const k = Math.min(1, dt * 1.8);
-  setCam(camX + (p.x - camX) * k, camY + (p.y - 90 - camY) * k);
-}
+/**
+ * 카메라는 **따라다니지 않는다.**
+ *
+ * 전선을 고를 때마다 화면이 그쪽으로 미끄러지게 해 봤더니, 삼각형 위에서는
+ * 그 움직임이 방향 감각을 흐트러뜨렸다. 세 길이 늘 같은 자리에 있어야
+ * 어디가 어디인지 안다. 옮기고 싶으면 손으로 끈다.
+ */
+export function follow() {}
 
 export function panBy(dx, dy) { setCam(camX - dx / zoom, camY - dy / zoom); }
 export function zoomBy(f, ax, ay) {
