@@ -96,62 +96,26 @@ export function setGeom(o) {
   if (o.dpr !== undefined) dpr = o.dpr;
 }
 
-/* ── 삼각형의 자리 ───────────────────────────────────────────────────
+/* ── 세 길의 자리 ─────────────────────────────────────────────────────
  *
- * 정삼각형의 꼭짓점 셋에 성을 둔다. 한 변의 길이가 EDGE_LEN 이 되도록
- * 외접원 반지름을 잡는다 (변 = R·√3).
+ * 길 셋을 **나란히 눕힌다.**
  *
- *              A
- *             / \
- *            /   \
- *           B ─── C
+ *     A ──────────── B
+ *     B ──────────── C
+ *     C ──────────── A
+ *
+ * 삼각형 위에 그대로 얹어 봤더니 대각선 길에서 방향 감각이 흐트러지고,
+ * 삼각형 안쪽 빈 땅이 화면을 잡아먹었다. 눕히면 지면이 수평이라 병사가
+ * 서 있는 것으로 보이고, 세 전선이 한 화면에 나란히 들어온다.
+ * 삼각 구조는 사라지지 않는다 — 줄마다 양 끝이 누구인지가 그 구조다.
  */
-const R = EDGE_LEN / Math.sqrt(3);
-export const VERT = {
-  a: { x: 0, y: -R },                                          // 위
-  b: { x: -R * Math.cos(Math.PI / 6), y: R * Math.sin(Math.PI / 6) },  // 왼쪽 아래
-  c: { x: R * Math.cos(Math.PI / 6), y: R * Math.sin(Math.PI / 6) },   // 오른쪽 아래
-};
-/** 삼각형 한가운데. 광산을 바깥으로 밀어내는 기준이다. */
-export const HUB = { x: 0, y: (VERT.a.y + VERT.b.y + VERT.c.y) / 3 };
-
-/** 성에서 바깥(삼각형 반대쪽)으로 향하는 단위벡터. */
-export function outward(who) {
-  const v = VERT[who];
-  const dx = v.x - HUB.x, dy = v.y - HUB.y, L = Math.hypot(dx, dy) || 1;
-  return { x: dx / L, y: dy / L };
-}
-/** 광산은 성 바깥에 둔다. 광부는 길에 발을 들이지 않는다. */
-export function minePos(who) {
-  const v = VERT[who], o = outward(who);
-  return { x: v.x + o.x * 190, y: v.y + o.y * 190 };
-}
 
 /**
- * 이 변이 지나는 길. 폐허를 거쳐 이어붙은 변은 세 점으로 꺾인다.
- */
-export function roadPath(E) {
-  return E.via ? [VERT[E.p], VERT[E.via], VERT[E.q]] : [VERT[E.p], VERT[E.q]];
-}
-function legOf(pts, t) {
-  if (pts.length === 2) return [pts[0], pts[1], t];
-  return t < .5 ? [pts[0], pts[1], t * 2] : [pts[1], pts[2], (t - .5) * 2];
-}
-/** 길 위의 한 점. t 는 0~1. */
-export function alongPath(pts, t) {
-  const [a, b, k] = legOf(pts, clamp(t, 0, 1));
-  return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
-}
-/**
- * 변 위의 좌표를 화면 좌표로.
+ * 변의 왼쪽 끝이 p, 오른쪽 끝이 q. 가운데를 0 에 맞춰 눕힌다.
  *
- * `x` 는 변을 따라간 거리, `h` 는 그 자리의 지면 위 높이(위가 음수)다.
- * 병사는 기울이지 않는다 — 60° 기운 스틱맨은 서 있는 게 아니라 넘어지는
- * 것으로 보인다. 그래서 높이는 늘 화면 수직으로 얹는다.
+ * 줄 사이 간격은 화면에 따라 달라지므로 그리는 쪽이 정한다 — 배율은 늘
+ * 폭이 먼저 차서, 남는 세로만큼 벌리는 편이 낫다.
  */
-export function roadPoint(E, x, h) {
-  const p = alongPath(roadPath(E), x / E.len);
-  return { x: p.x, y: p.y + (h || 0) };
-}
+export function laneX(E, x) { return x - E.len / 2; }
 
 export function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
