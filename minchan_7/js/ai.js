@@ -22,9 +22,20 @@ import { pick } from './aiPick.js';
 export const BRAINS = {
   // 쉬움은 **정말 쉬워야 한다.** 상성을 거의 안 보고, 손이 느리고, 광부를
   // 적게 두고, 화살비는 어지간히 몰리기 전엔 잊는다.
-  '쉬움':   { miners: 3, tick: 2.4, spend: .45, rain: 1500, up: .12, wide: 6, smart: .12, save: 0 },
-  '보통':   { miners: 6, tick: 1.1, spend: .78, rain: 600, up: .5, wide: 3, smart: .8, save: .35 },
-  '어려움': { miners: 8, tick: .8, spend: .93, rain: 420, up: .8, wide: 2, smart: 1, save: .6 },
+  '쉬움':   { miners: 3, tick: 2.4, spend: .45, rain: 1500, up: .12, wide: 6, smart: .12, save: 0, hunt: 0 },
+  '보통':   { miners: 6, tick: 1.1, spend: .78, rain: 600, up: .5, wide: 3, smart: .8, save: .35, hunt: 0 },
+  /**
+   * 어려움은 **빠른 게 아니라 참을 줄 안다.**
+   *
+   * 처음엔 손을 빠르게(0.4초) 해서 세게 만들려 했는데 오히려 약해졌다
+   * (전선 지표 +58 → −14). 자주 사면 금이 모일 틈이 없어 늘 싼 것만
+   * 살 수 있다 — 검사 스무 명은 버서커 둘을 못 이긴다. 재 보니 1.1초
+   * 근처에서 가장 세고 그 뒤로는 평평하다.
+   *
+   * 대신 광부를 꽉 채우고(10), 상성을 온전히 보고(smart 1),
+   * **약해진 쪽을 끝내러 간다**(hunt) — 이게 보통과 성격을 가르는 지점이다.
+   */
+  '어려움': { miners: 10, tick: 1.1, spend: .93, rain: 420, up: .8, wide: 2, smart: 1, save: .6, hunt: .62 },
 };
 export const LEVELS = Object.keys(BRAINS);
 
@@ -95,6 +106,19 @@ export function stepAI(P, dt) {
 function target(reads, B) {
   const hot = reads.filter(r => r.urgency > .62);
   if (hot.length) return hot.sort((a, b) => b.urgency - a.urgency)[0];
+
+  // **사냥.** 성이 얇아진 쪽을 끝내러 간다.
+  //
+  // 셋이 붙는 판에서 하나를 먼저 지우면 상대할 전선이 줄고 폐허 배당까지
+  // 붙는다. 이걸 안 하면 어느 난이도든 그냥 양쪽을 똑같이 미는 것으로만
+  // 보여서, 세다는 느낌이 아니라 빠르다는 느낌밖에 안 난다.
+  if (B.hunt) {
+    const weak = r => { const F = W(r.foe); return F ? F.hp / F.max : 1; };
+    const prey = reads.filter(r => weak(r) < B.hunt && r.hold > .45)
+                      .sort((a, b) => weak(a) - weak(b))[0];
+    if (prey) return prey;
+  }
+
   const win = reads.filter(r => r.push > .72 && r.hold > .55);
   if (win.length) return win.sort((a, b) => b.push - a.push)[0];
   // 그밖에는 급한 정도에 비례해 뽑는다. 한쪽을 아예 비워 두지 않는다.
