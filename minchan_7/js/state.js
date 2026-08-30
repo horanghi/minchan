@@ -32,7 +32,7 @@ function makeGate(E, pos) {
 function makeEdge(id) {
   const [p, q] = EDGE_ENDS[id];
   const E = {
-    id, p, q, len: EDGE_LEN, ruin: null,
+    id, p, q, len: EDGE_LEN, ruin: null, via: null,
     units: [], shots: [], beams: [], bolts: [], parts: [], texts: [], rain: [],
     front: EDGE_LEN / 2, turretT: { p: 0, q: 0 },
   };
@@ -189,7 +189,7 @@ function mergeEdges(E1, E2, gone) {
     u.x = from2(u.x); u.dir = -1; u.E = E1; kept.push(u);
   }
 
-  E1.p = s1; E1.q = s2; E1.len = len; E1.ruin = mid;
+  E1.p = s1; E1.q = s2; E1.len = len; E1.ruin = mid; E1.via = gone;
   E1.units = kept;
   // 날아가던 것들의 좌표는 옛 변의 것이다. 그대로 두면 엉뚱한 데서 터진다.
   E1.shots.length = 0; E1.beams.length = 0; E1.bolts.length = 0; E1.rain.length = 0;
