@@ -1,4 +1,4 @@
-import { ctx, gy, TEAM } from './world.js';
+import { ctx, TEAM } from './world.js';
 import { G } from './state.js';
 
 /**
@@ -8,6 +8,9 @@ import { G } from './state.js';
  * 아니면 빨강" 이면 됐지만 셋이 붙으면 그 이분법이 성립하지 않는다.
  * 색은 주인의 팀 색을 그대로 쓰고, 방향은 유닛이 자기 변에서 나아가는
  * 쪽(`u.dir`)을 따른다.
+ *
+ * 발밑 자리는 `u.px/u.py` 로 받는다. 삼각형 위에서도 **기울이지 않는다** —
+ * 60° 기운 스틱맨은 서 있는 게 아니라 넘어지는 것으로 보인다.
  */
 /**
  * 기관총 장갑차.
@@ -81,7 +84,7 @@ export function drawUnit(u){
   const col = u.hurt>0 ? '#f0663f'
             : (u.type==='miner' ? '#c98f1a'
             : (u.T.col ? u.T.col : TEAM[u.own].c));
-  ctx.save(); ctx.translate(u.x, gy+u.yo);
+  ctx.save(); ctx.translate(u.px, u.py);
   ctx.globalAlpha=.13; ctx.fillStyle='#1b2430';
   ctx.beginPath(); ctx.ellipse(0,0,h*.2,h*.05,0,0,7); ctx.fill(); ctx.globalAlpha=1;
   if(u.dead){
@@ -404,8 +407,8 @@ export function drawUnit(u){
     ctx.strokeStyle='#7fd0ff'; ctx.lineWidth=2; ctx.globalAlpha=.85;
     const w=h*.22;
     ctx.beginPath();
-    ctx.moveTo(u.x-w, gy+u.yo); ctx.lineTo(u.x+w, gy+u.yo);
-    ctx.moveTo(u.x-w*.6, gy+u.yo-4); ctx.lineTo(u.x+w*.6, gy+u.yo-4);
+    ctx.moveTo(u.px-w, u.py); ctx.lineTo(u.px+w, u.py);
+    ctx.moveTo(u.px-w*.6, u.py-4); ctx.lineTo(u.px+w*.6, u.py-4);
     ctx.stroke();
     ctx.restore();
   }
@@ -414,7 +417,7 @@ export function drawUnit(u){
     /* 광부는 무적이다. 그 사실이 화면에도 보여야 한다. */
     ctx.save();
     const a = Math.min(1, u.ward/.5);
-    ctx.beginPath(); ctx.arc(u.x, gy - h*.5 + u.yo, h*.8, 0, Math.PI*2);
+    ctx.beginPath(); ctx.arc(u.px, u.py - h*.5, h*.8, 0, Math.PI*2);
     ctx.globalAlpha = .10 + a*.16; ctx.fillStyle = '#9fd8ff'; ctx.fill();
     ctx.globalAlpha = .30 + a*.55; ctx.strokeStyle = '#cfeaff';
     ctx.lineWidth = 2 + a*1.6; ctx.stroke();
@@ -423,7 +426,7 @@ export function drawUnit(u){
 
   if(!u.dead && u.hp<u.max){
     const w=h*.5, r=u.hp/u.max;
-    ctx.fillStyle='#c7d2dc'; ctx.fillRect(u.x-w/2, gy+u.yo-h-13, w, 4);
-    ctx.fillStyle=col; ctx.fillRect(u.x-w/2, gy+u.yo-h-13, w*r, 4);
+    ctx.fillStyle='#c7d2dc'; ctx.fillRect(u.px-w/2, u.py-h-13, w, 4);
+    ctx.fillStyle=col; ctx.fillRect(u.px-w/2, u.py-h-13, w*r, 4);
   }
 }

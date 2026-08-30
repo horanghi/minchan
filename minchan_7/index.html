@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>삼국 스틱맨</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+/* touch-action 은 상속되지 않는다. 요소마다 명시한다. */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  touch-action:manipulation}
+:root{--paper:#e9eef2;--ink:#1b2430;--slate:#131a22;--slate2:#1e2833;--line:#33414f;--gold:#e8b23a;
+  --me:#1f5fd0}
+html,body{height:100%;overflow:hidden;background:var(--slate);
+  font-family:'Nanum Gothic',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;
+  color:#e6edf3;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+#wrap{position:fixed;inset:0;display:flex;flex-direction:column}
+
+#top{flex:0 0 auto;background:var(--slate);border-bottom:2px solid var(--line);
+  padding:calc(env(safe-area-inset-top) + 6px) 10px 6px;display:flex;align-items:center;gap:8px}
+#homeBtn{flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  width:34px;height:34px;font-size:17px;text-decoration:none;line-height:1;
+  background:var(--slate2);border:2px solid var(--line);border-radius:4px;transition:transform .09s}
+#homeBtn:active{transform:scale(.94)}
+/* 성 셋의 체력. 삼각형 자체는 전장에 그려지므로 여기는 숫자만 맡는다. */
+#hps{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.hp{display:flex;align-items:center;gap:7px;font-size:10px}
+.hp .lb{flex:0 0 34px;font-weight:800}
+.hp .bar{flex:1;height:8px;background:#0b1016;border:1.5px solid var(--line);border-radius:2px;overflow:hidden}
+.hp .bar i{display:block;height:100%;transition:width .18s}
+.hp .vv{flex:0 0 auto;font-family:'Gaegu',cursive;font-size:13px;font-weight:700;color:#cfdae5;min-width:36px;text-align:right}
+.hp.out{opacity:.4}
+#goldbox{flex:0 0 auto;text-align:right;line-height:1.05}
+#goldbox .g{font-family:'Gaegu',cursive;font-weight:700;font-size:26px;color:var(--gold)}
+#goldbox .s{font-size:10px;color:#7d8fa1}
+#goldbox .s b{color:var(--me);font-weight:800}
+
+#stage{flex:1;position:relative;overflow:hidden;background:var(--paper)}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#banner{position:absolute;left:0;right:0;top:12px;text-align:center;pointer-events:none}
+#banner span{display:inline-block;background:rgba(19,26,34,.9);border:2px solid var(--line);
+  padding:4px 14px;font-family:'Gaegu',cursive;font-weight:700;font-size:17px;transform:rotate(-1.2deg)}
+/* 전선 고르개.
+   **전장 위에 얹지 않는다.** 겹치면 정작 싸움을 가린다. 상점 위 한 줄로
+   두어 손도 가깝게 한다. 밀고 있는 정도를 숫자로 함께 보여, 넘겨보지
+   않고도 어느 쪽이 급한지 알 수 있게 한다. */
+#frontTag{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.ftab{background:var(--slate2);border:2px solid var(--line);border-radius:4px;
+  padding:7px 8px;font-size:11px;font-weight:800;color:#9db0c2;cursor:pointer;
+  white-space:nowrap;display:flex;align-items:center;gap:6px;position:relative;overflow:hidden}
+.ftab:active{transform:translateY(2px)}
+.ftab.on{color:#e6edf3;border-color:#7d8fa1}
+.ftab i{font-style:normal;display:inline-block;width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.ftab .pc{margin-left:auto;font-family:'Gaegu',cursive;font-size:15px;font-weight:700}
+/* 밀고 있는 만큼 바닥이 내 색으로 찬다. 숫자를 못 읽어도 보인다. */
+.ftab .fill{position:absolute;left:0;bottom:0;height:3px;background:var(--me);width:50%}
+
+/* 물러서서 삼각형 전체를 본다. 파고든 뒤 돌아올 길이 있어야 한다. */
+#wide{position:absolute;right:8px;top:8px;width:38px;height:38px;font-size:18px;
+  background:rgba(19,26,34,.86);border:2px solid var(--line);border-radius:5px;
+  color:#e6edf3;cursor:pointer;z-index:5}
+#wide:active{transform:scale(.94)}
+#bottom{flex:0 0 auto;background:var(--slate);border-top:2px solid var(--line);
+  padding:8px 8px calc(env(safe-area-inset-bottom) + 8px)}
+#units{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.ubtn{background:var(--slate2);border:2px solid var(--line);border-radius:4px;padding:6px 1px 4px;
+  display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;position:relative}
+.ubtn:active{transform:translateY(2px)}
+.ubtn.off{opacity:.34}
+.ubtn.rdy{border-color:#4a6b96}
+.ubtn canvas{width:28px;height:32px}
+.ubtn .nm{font-size:10px;font-weight:700;color:#d5e0ea;white-space:nowrap}
+.ubtn .ct{font-family:'Gaegu',cursive;font-weight:700;font-size:14px;color:var(--gold);line-height:1}
+.ubtn .cnt{position:absolute;top:2px;right:4px;font-size:10px;font-weight:800;color:#8fb4e8}
+#row2{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.wbtn{background:var(--slate2);border:2px solid var(--line);border-radius:4px;padding:9px 6px;
+  font-weight:800;font-size:13px;color:#d5e0ea;cursor:pointer;position:relative;overflow:hidden}
+.wbtn:active{transform:translateY(2px)}
+.wbtn.hot{border-color:var(--gold);color:var(--gold)}
+.wbtn .cd{position:absolute;left:0;bottom:0;top:0;background:rgba(255,255,255,.09);width:0%}
+.wbtn span{position:relative}
+
+#modal{position:fixed;inset:0;background:rgba(6,10,14,.86);display:none;align-items:center;justify-content:center;padding:16px;z-index:20}
+#modal.on{display:flex}
+.card{background:var(--slate);border:2px solid var(--line);width:100%;max-width:400px;max-height:86vh;overflow:auto;padding:16px}
+.card h2{font-family:'Gaegu',cursive;font-size:26px;font-weight:700;margin-bottom:2px}
+.card .sub{font-size:11px;color:#7d8fa1;margin-bottom:14px}
+.up{display:flex;align-items:center;gap:10px;border-top:1px solid #2a3642;padding:11px 0}
+.up .ic{font-size:22px;width:30px;text-align:center}
+.up .tx{flex:1;min-width:0}
+.up .tx b{display:block;font-size:13px}
+.up .tx small{color:#8ea0b2;font-size:11px}
+.up button{background:transparent;border:2px solid var(--line);color:var(--gold);font-family:'Gaegu',cursive;
+  font-weight:700;font-size:17px;padding:5px 11px;border-radius:3px;cursor:pointer}
+.up button:disabled{opacity:.32;color:#8ea0b2}
+.close{width:100%;margin-top:15px;background:var(--slate2);border:2px solid var(--line);color:#e6edf3;font-weight:800;padding:11px;font-size:14px;cursor:pointer}
+
+#lobby{position:fixed;inset:0;background:rgba(6,10,14,.96);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;z-index:40;padding:22px;text-align:center;overflow:auto}
+#lobby.off{display:none}
+#lobby h1{font-family:'Gaegu',cursive;font-size:38px;font-weight:700;transform:rotate(-2deg);color:#e8b23a}
+#lobby .sub{color:#9db0c2;font-size:13px;margin-bottom:2px}
+/* 세 자리. 각각 사람이 잡을지 컴퓨터에 맡길지 고른다. */
+#seats{display:flex;flex-direction:column;gap:8px;width:100%;max-width:330px}
+.seat{display:flex;align-items:center;gap:10px;background:var(--slate2);
+  border:2px solid var(--line);border-radius:5px;padding:9px 11px}
+.seat .dot{width:15px;height:15px;border-radius:50%;flex:0 0 auto}
+.seat .nm{flex:0 0 46px;text-align:left;font-weight:800;font-size:13px}
+.seat .opts{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.seat .opts button{min-width:0;padding:7px 2px;font-size:11px;font-weight:800;border-radius:4px;
+  background:#0b1016;border:2px solid var(--line);color:#8ea0b2;cursor:pointer}
+.seat .opts button.on{border-color:#4a6b96;color:#bfe6ff;background:#16202a}
+#lobby .go{background:var(--slate2);border:2px solid #4a6b96;color:#bfe6ff;font-weight:800;
+  padding:13px 30px;font-size:15px;cursor:pointer;border-radius:5px;min-width:220px}
+#lobbyMsg{color:#8ea0b2;font-size:12px;min-height:16px;max-width:320px;line-height:1.6}
+
+#over{position:fixed;inset:0;background:rgba(6,10,14,.93);display:none;flex-direction:column;
+  align-items:center;justify-content:center;gap:6px;z-index:30;padding:20px;text-align:center}
+#over.on{display:flex}
+#over h1{font-family:'Gaegu',cursive;font-size:48px;font-weight:700;transform:rotate(-2deg)}
+#over p{color:#9db0c2;font-size:14px;margin-bottom:16px}
+#over button{background:var(--slate2);border:2px solid var(--line);color:#e6edf3;font-weight:800;padding:13px 34px;font-size:15px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="top">
+    <a id="homeBtn" href="../index.html" title="게임 선택" aria-label="게임 선택">🎮</a>
+    <div id="hps"></div>
+    <div id="goldbox"><div class="g" id="gold">0</div><div class="s" id="grate">광부 0</div></div>
+  </div>
+
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <button id="wide" title="전체 보기">🔭</button>
+    <div id="banner"><span id="bannerT">전투 개시</span></div>
+  </div>
+
+  <div id="bottom">
+    <div id="frontTag"></div>
+    <div id="units"></div>
+    <div id="row2">
+      <button class="wbtn hot" id="ult"><div class="cd" id="ultcd"></div><span>🏹 화살비</span></button>
+      <button class="wbtn" id="upBtn"><span>⚒️ 강화</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="modal"><div class="card">
+  <h2>강화</h2>
+  <div class="sub">골드를 써서 부대와 성을 키운다. 두 전선에 함께 붙는다.</div>
+  <div id="uplist"></div>
+  <button class="close" id="closeUp">닫기</button>
+</div></div>
+
+<div id="lobby">
+  <h1>삼국 스틱맨</h1>
+  <div class="sub">성 셋, 전선 셋. 두 곳을 동시에 막아야 한다.</div>
+  <div id="seats"></div>
+  <button class="go" id="btnStart">시작</button>
+  <div id="lobbyMsg"></div>
+</div>
+
+<div id="over">
+  <h1 id="overT">패배</h1>
+  <p id="overS"></p>
+  <button id="again">다시 시작</button>
+</div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

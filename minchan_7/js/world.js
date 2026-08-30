@@ -63,19 +63,86 @@ export function foeOn(E, who) { return E.p === who ? E.q : E.p; }
  * 거친다. 그래야 `gy` 를 `view.gy` 로 바꾸느라 그림 코드 수백 줄을
  * 건드리는 일이 없다.
  */
-export let ctx = null, gy = 0, cam = 0, camUser = 0;
-export let scale = 1, VIEW = 620, cw = 0, ch = 0, dpr = 1;
+/**
+ * **지면은 0 이다.**
+ *
+ * 전투 코드는 자국의 자리를 늘 `(변 위 x, gy - 높이)` 로 만든다. gy 를
+ * 상수 0 으로 두면 그 y 는 곧 "지면 위 높이(위가 음수)"가 되고, 그리는
+ * 쪽에서 길 위의 한 점에 그대로 얹기만 하면 된다. 화면 높이에 묶여 있던
+ * 값을 상수로 바꾸는 것만으로 1D 좌표가 삼각형 위로 옮겨진다.
+ */
+export const gy = 0;
+
+export let ctx = null, cw = 0, ch = 0, dpr = 1;
+/** 2D 카메라. 삼각형 전체를 보다가 한 전선으로 파고든다. */
+export let camX = 0, camY = 0, zoom = .3, zoomFit = .3;
 
 export function setCtx(v) { ctx = v; }
-export function setCam(v) { cam = v; }
-export function setCamUser(v) { camUser = v; }
+export function setCam(x, y) { camX = x; camY = y; }
+export function setZoom(z) { zoom = clamp(z, zoomFit * .9, 1.15); }
+export function setFit(z) { zoomFit = z; }
 export function setGeom(o) {
   if (o.cw !== undefined) cw = o.cw;
   if (o.ch !== undefined) ch = o.ch;
   if (o.dpr !== undefined) dpr = o.dpr;
-  if (o.scale !== undefined) scale = o.scale;
-  if (o.VIEW !== undefined) VIEW = o.VIEW;
-  if (o.gy !== undefined) gy = o.gy;
+}
+
+/* ── 삼각형의 자리 ───────────────────────────────────────────────────
+ *
+ * 정삼각형의 꼭짓점 셋에 성을 둔다. 한 변의 길이가 EDGE_LEN 이 되도록
+ * 외접원 반지름을 잡는다 (변 = R·√3).
+ *
+ *              A
+ *             / \
+ *            /   \
+ *           B ─── C
+ */
+const R = EDGE_LEN / Math.sqrt(3);
+export const VERT = {
+  a: { x: 0, y: -R },                                          // 위
+  b: { x: -R * Math.cos(Math.PI / 6), y: R * Math.sin(Math.PI / 6) },  // 왼쪽 아래
+  c: { x: R * Math.cos(Math.PI / 6), y: R * Math.sin(Math.PI / 6) },   // 오른쪽 아래
+};
+/** 삼각형 한가운데. 광산을 바깥으로 밀어내는 기준이다. */
+export const HUB = { x: 0, y: (VERT.a.y + VERT.b.y + VERT.c.y) / 3 };
+
+/** 성에서 바깥(삼각형 반대쪽)으로 향하는 단위벡터. */
+export function outward(who) {
+  const v = VERT[who];
+  const dx = v.x - HUB.x, dy = v.y - HUB.y, L = Math.hypot(dx, dy) || 1;
+  return { x: dx / L, y: dy / L };
+}
+/** 광산은 성 바깥에 둔다. 광부는 길에 발을 들이지 않는다. */
+export function minePos(who) {
+  const v = VERT[who], o = outward(who);
+  return { x: v.x + o.x * 190, y: v.y + o.y * 190 };
+}
+
+/**
+ * 이 변이 지나는 길. 폐허를 거쳐 이어붙은 변은 세 점으로 꺾인다.
+ */
+export function roadPath(E) {
+  return E.via ? [VERT[E.p], VERT[E.via], VERT[E.q]] : [VERT[E.p], VERT[E.q]];
+}
+function legOf(pts, t) {
+  if (pts.length === 2) return [pts[0], pts[1], t];
+  return t < .5 ? [pts[0], pts[1], t * 2] : [pts[1], pts[2], (t - .5) * 2];
+}
+/** 길 위의 한 점. t 는 0~1. */
+export function alongPath(pts, t) {
+  const [a, b, k] = legOf(pts, clamp(t, 0, 1));
+  return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+}
+/**
+ * 변 위의 좌표를 화면 좌표로.
+ *
+ * `x` 는 변을 따라간 거리, `h` 는 그 자리의 지면 위 높이(위가 음수)다.
+ * 병사는 기울이지 않는다 — 60° 기운 스틱맨은 서 있는 게 아니라 넘어지는
+ * 것으로 보인다. 그래서 높이는 늘 화면 수직으로 얹는다.
+ */
+export function roadPoint(E, x, h) {
+  const p = alongPath(roadPath(E), x / E.len);
+  return { x: p.x, y: p.y + (h || 0) };
 }
 
 export function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }

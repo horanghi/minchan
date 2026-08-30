@@ -1,4 +1,4 @@
-import { gy } from './world.js';
+import { gy, ULT_CD, clamp } from './world.js';
 import { G, W, dmgMul, foeGate, fall } from './state.js';
 import { beep } from './sound.js';
 
@@ -292,4 +292,23 @@ export function mgTick(u, dt) {
     shoot(u.x + u.dir * u.size * .46, gy - u.size * .42 + u.yo, t,
           u.dmg * dmgMul(u.own), u.own, 0, 0, true);
   }
+}
+
+/**
+ * 화살비. **한 전선에만 떨어진다.**
+ *
+ * 병사는 두 전선 어디로든 보낼 수 있지만 화살비는 아니다. 버튼 한 번이
+ * 두 전선을 동시에 쓸어 버리면 어디를 칠지 고르는 재미가 사라진다.
+ *
+ * 피해는 그 변 전체에 들어간다(화면 밖의 적도 맞는다). 화살 그림만
+ * 전선 언저리에 뿌려서, 어디서 벌어지는 일인지가 보이게 한다.
+ */
+export function castRain(who, E) {
+  const P = W(who);
+  if (!P || !P.alive || P.rainCd > 0 || G.over || !E) return false;
+  const w = Math.min(E.len, 900);
+  E.rain.push({ t: 1.7, tick: 0, own: who, x0: clamp(E.front - w / 2, 0, E.len - w), w });
+  P.rainCd = ULT_CD;
+  beep(880, .3, .05);
+  return true;
 }
