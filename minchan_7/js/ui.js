@@ -1,6 +1,6 @@
-import { TEAM, PLAYERS, MAX_MINERS, ULT_CD, GATE_OFF, foeOn, dirOn, setMe as setWorldMe } from './world.js';
+import { TEAM, PLAYERS, MAX_MINERS, ULT_CD, GATE_OFF, foeOn, dirOn, onEdge, setMe as setWorldMe } from './world.js';
 import { TYPES, ORDER } from './types.js';
-import { G, W, edgesOf, minerCount, haul } from './state.js';
+import { G, W, edgesOf, minerCount, haul, minerCycle } from './state.js';
 import { buy } from './shop.js';
 import { UPS, upCost, buyUp, upMaxed } from './upgrades.js';
 import { castRain } from './combat.js';
@@ -125,9 +125,16 @@ function syncTabs() {
     t.el.classList.toggle('on', t.id === G.view);
   }
 }
+/**
+ * 명령할 전선을 고른다.
+ *
+ * **내가 낀 변만 고를 수 있다.** 화면에는 남의 싸움도 나오지만 그건 구경
+ * 거리지 명령할 곳이 아니다 — 막지 않으면 남의 성문 앞에 내 병사가 솟는다.
+ */
 export function view(id) {
-  if (!G.E[id] || !G.live.includes(id)) return;
-  G.view = id; focus(G.E[id]); buildTabs();
+  const E = G.E[id];
+  if (!E || !G.live.includes(id) || !onEdge(E, ME)) return;
+  G.view = id; focus(E); buildTabs();
 }
 /** 좌우로 밀어 전선을 바꾼다. */
 export function cycleView(step) {
@@ -170,7 +177,7 @@ export function hud(dt) {
   el('gold').textContent = Math.floor(P.gold);
   const mc = minerCount(ME);
   el('grate').innerHTML = '<b>' + TEAM[ME].nm + '</b> · 광부 ' + mc
-    + ' · ' + (mc * haul(ME) / 2.9).toFixed(1) + '/초';
+    + ' · ' + (mc * haul(ME) / minerCycle()).toFixed(1) + '/초';
   const mcnt = el('mcnt'); if (mcnt) mcnt.textContent = mc;
 
   for (const k of ORDER) {

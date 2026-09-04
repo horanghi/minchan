@@ -43,10 +43,10 @@ export const TEAM = {
  * 유닛 그림 배율.
  *
  * `size` 는 **순수하게 그림용**이다 — 사거리·피해 어디에도 안 쓰인다.
- * 세 길을 늘 한 화면에 담으므로 배율로만 크기를 벌 수 있다. 전투는 한
- * 눈금도 달라지지 않는다.
+ * 줄마다 길의 일부만 잘라 보여 주므로(draw 의 VIEWW) 이 배율에서 병사가
+ * 원래 스틱맨과 비슷한 크기로 선다. 전투는 한 눈금도 달라지지 않는다.
  */
-export const ART = 1.85;
+export const ART = 1.6;
 
 export const MAX_MINERS = 10;
 /** 적과 최소한 이만큼은 떨어져 선다 (px). */
@@ -58,6 +58,8 @@ export const ULT_CD = 14;
 
 /** 이 플레이어가 이 변에서 나아가는 방향. 왼쪽 끝(p)이면 +1, 오른쪽 끝(q)이면 -1. */
 export function dirOn(E, who) { return E.p === who ? 1 : -1; }
+/** 이 사람이 이 변의 당사자인가. 아니면 명령이 닿아선 안 된다. */
+export function onEdge(E, who) { return !!E && (E.p === who || E.q === who); }
 /** 이 플레이어의 성문 x. */
 export function gateXOn(E, who) { return E.p === who ? GATE_OFF : E.len - GATE_OFF; }
 /** 이 플레이어의 광산 x. */
@@ -119,12 +121,9 @@ export function setGeom(o) {
 export let ME = 'a';
 export function setMe(w) { ME = w; }
 
-/**
- * 변의 왼쪽 끝이 p, 오른쪽 끝이 q. 가운데를 0 에 맞춰 눕힌다.
- *
- * 줄 사이 간격은 화면에 따라 달라지므로 그리는 쪽이 정한다 — 배율은 늘
- * 폭이 먼저 차서, 남는 세로만큼 벌리는 편이 낫다.
+/*
+ * 줄의 자리(간격·가로 창)는 화면 크기에 달렸으므로 그리는 쪽이 정한다.
+ * 여기서는 "왼쪽 끝이 p, 오른쪽 끝이 q" 라는 약속만 남긴다.
  */
-export function laneX(E, x) { return x - E.len / 2; }
 
 export function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }

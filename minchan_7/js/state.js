@@ -114,6 +114,15 @@ export function haul(who) {
   // 마무리를 돕되 판을 정해 버리지는 않는 선이 1.5 다.
   return (14 + G.P[who].up.mine * 5) * (1 + G.t / 240) * (left < 3 ? 1.5 : 1);
 }
+/**
+ * 광부 한 명이 한 번 왕복하는 데 걸리는 시간(초).
+ *
+ * 성문↔광산을 오가는 시간 + 캐는 시간이다. HUD 가 이걸 2.9 로 어림잡고
+ * 있었는데 실제로는 4.9 초라, 초당 수입이 7할 가까이 부풀려 보였다.
+ */
+export function minerCycle() {
+  return SETUP.mineT + 2 * HOME_LEN / TYPES.miner.spd;
+}
 export function dmgMul(who) { return 1 + G.P[who].up.dmg * 0.10; }
 /** 이 유닛이 이 변에서 두들기는 성문. */
 export function foeGate(u) { return u.dir > 0 ? u.E.gq : u.E.gp; }

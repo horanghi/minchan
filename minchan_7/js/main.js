@@ -111,7 +111,6 @@ function frame(now) {
   if (G) {
     if (!G.over) { step(dt); stepAll(dt); }
     if (G.events.length) ui.drainEvents();
-    draw.follow(dt);
     draw.draw();
     ui.hud(dt);
     if (G.over && !overShown) finish();
