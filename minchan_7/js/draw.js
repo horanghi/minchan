@@ -1,7 +1,7 @@
 import {
   ctx, cw, ch, dpr, camX, camY, zoom, zoomFit, TEAM, ME,
-  GATE_OFF, MINE_OFF,
-  setGeom, setCam, setZoom, setFit, clamp,
+  GATE_OFF, MINE_OFF, EDGE_LEN,
+  setGeom, setCam, setZoom, setFit, clamp, onEdge,
 } from './world.js';
 import { G, W, liveEdges } from './state.js';
 import { drawUnit } from './unitArt.js';
@@ -9,118 +9,69 @@ import { drawUnit } from './unitArt.js';
 let cv = null;
 export function attach(canvas) { cv = canvas; }
 
-/* ── 줄 자리 ─────────────────────────────────────────────────────────
+/* ── 화면 구성 ───────────────────────────────────────────────────────
  *
- * 길 셋을 나란히 눕힌다. 매 프레임 살아 있는 변만 골라 위에서 아래로
- * 줄을 세운다 — 하나가 무너져 둘이 되면 자연히 가운데로 모인다.
- */
-let rows = {};
-
-/**
- * 줄 간격.
+ * **하나는 크게, 나머지는 얇게.**
  *
- * 배율은 **폭**이 정한다(길이 1560 이니 폰에서는 늘 폭이 먼저 찬다). 그러면
- * 세로가 많이 남는데, 간격을 그만큼 벌려 남는 자리를 쓴다. 화면이 넓어지면
- * 자연히 좁아진다.
- */
-/** 배너가 첫 줄을 가리지 않게 위를 이만큼(화면 px) 비워 둔다. */
-const TOP_PAD = 74;
-
-/**
- * 한 줄에 **한 번에 보여 줄 길이**(전장 px).
+ * 세 줄을 똑같이 나눠 보니 문제가 분명했다. 이 게임의 맛은 구경(타이탄이
+ * 화면을 꽉 채우고 코어빔을 쏘는 것)과 판단(두 전선 중 어디에 쓸까)에서
+ * 오는데, 셋을 균등하게 놓으면 **둘 다 반씩만** 준다. 병사는 손톱만 하고,
+ * 그렇다고 판단이 특별히 쉬워지지도 않는다.
  *
- * 길 전체(1560)를 다 담으면 세 줄을 세우는 순간 병사가 손톱만 해진다.
- * minchan_6 도 전장을 다 보여 주지 않았다 — 600~940 만큼 잘라 카메라로
- * 따라다녔다. 여기서는 **줄마다 제 전선 쪽을 잘라** 보여준다. 세 판이
- * 다 보이면서도 병사가 병사만 하다.
+ * 그래서 역할을 갈랐다.
+ *   · 보고 있는 전선  = 크게. minchan_6 그대로. 여기서 구경한다
+ *   · 나머지 전선들   = 얇은 띠. **길 전체**를 한눈에. 여기서 판단한다
+ *
+ * 얇은 띠가 큰 화면과 **다른 일**을 하는 것이 핵심이다. 큰 화면은 지금
+ * 벌어지는 싸움을, 띠는 길 전체의 형세를 보여준다.
  */
-const VIEWW = 960;
 
-/** 폭으로 정해지는 기본 배율. 이 배율에서 병사 크기가 원래 스틱맨과 비슷하다. */
+/** 한 줄에 한 번에 보여 줄 길이(전장 px). minchan_6 의 600~940 과 같은 뜻. */
+const VIEWW = 940;
+/** 배너가 큰 화면을 가리지 않게 위를 이만큼(화면 px) 비운다. */
+const TOP_PAD = 70;
+/** 얇은 띠 한 줄의 높이(화면 px). */
+const STRIP_H = 64;
+
 function baseZoom() { return cw / VIEWW; }
+function fitZoom() { return baseZoom(); }
 
-/**
- * 줄 하나가 차지하는 띠의 높이(전장 px).
+/* ── 큰 화면의 창 중심 ───────────────────────────────────────────────
  *
- * 화면을 줄 수만큼 고르게 나눈다. **지면은 띠의 아래쪽**에 두어, 그 위가
- * 통째로 그 줄의 머리 공간이 된다 — 안 그러면 첫 줄의 성과 타이탄이 화면
- * 위로 잘려 나간다.
+ * 전선을 따라가되 길 밖으로는 나가지 않는다. **프레임마다 한 번만** 옮긴다 —
+ * 좌표를 바꿀 때마다 옮기면 부드럽게 따라가는 게 아니라 그 자리에서 튀고,
+ * 같은 줄인데 지면과 병사가 다른 중심으로 그려져 어긋난다.
  */
-function bandFor(n) {
-  const z = zoom || baseZoom();
-  return ((ch - TOP_PAD) / Math.max(1e-6, z)) / Math.max(1, n);
-}
-/**
- * 줄을 세운다.
- *
- * 두 가지를 맞춘다.
- *
- * **내 전선을 위로.** 내가 지켜야 할 둘이 먼저 눈에 들어와야 한다. 내가
- * 끼지 않은 싸움은 아래에 둔다.
- *
- * **내 성은 늘 왼쪽.** 변마다 내가 p 였다 q 였다 하는데, 그대로 그리면 줄마다
- * 내 성이 왼쪽이었다 오른쪽이었다 해서 **미는 방향이 뒤집힌다.** 내가
- * 오른쪽 끝인 변은 좌우를 뒤집어 눕힌다.
- */
-let flips = {}, centers = {};
-
-/**
- * 그 줄에서 화면 한가운데에 놓을 지점.
- *
- * 전선을 따라가되 길 밖으로는 나가지 않는다. 전선이 튀어도 화면이 덜컹이지
- * 않게 조금씩 따라간다.
- *
- * **프레임마다 한 번만 옮긴다.** 좌표를 바꿀 때마다 옮기면(pt 는 유닛·입자
- * 수만큼 불린다) 부드럽게 따라가는 게 아니라 그 자리에서 튀고, 더 나쁘게는
- * **같은 줄인데 지면과 병사가 서로 다른 중심으로 그려져** 어긋난다.
- */
-function advanceCenters(live) {
-  for (const E of live) {
-    const half = Math.min(VIEWW / 2, E.len / 2);
-    const want = clamp(E.front, half, E.len - half);
-    const cur = centers[E.id];
-    centers[E.id] = cur === undefined ? want : cur + (want - cur) * .08;
-  }
+let centers = {};
+function advanceCenter(E) {
+  const half = Math.min(VIEWW / 2, E.len / 2);
+  const want = clamp(E.front, half, E.len - half);
+  const cur = centers[E.id];
+  centers[E.id] = cur === undefined ? want : cur + (want - cur) * .08;
 }
 function centerOf(E) {
-  const c = centers[E.id];
-  if (c !== undefined) return c;
-  const half = Math.min(VIEWW / 2, E.len / 2);
-  return (centers[E.id] = clamp(E.front, half, E.len - half));
+  if (centers[E.id] === undefined) advanceCenter(E);
+  return centers[E.id];
 }
 
-let band = 500;
-function layout() {
-  const all = G ? liveEdges() : [];
-  const mine = all.filter(E => E.p === ME || E.q === ME);
-  const rest = all.filter(E => !mine.includes(E));
-  const live = [...mine, ...rest];
-  advanceCenters(live);
-  const n = live.length || 3;
-  band = bandFor(n);
-  const H = band * n;
-  rows = {}; flips = {};
-  live.forEach((E, i) => {
-    // 지면은 자기 띠의 **바닥**에 붙인다. 그 위가 통째로 이 줄의 머리
-    // 공간이라야 첫 줄의 타이탄이 화면 밖으로 삐져나오지 않는다.
-    // 70 은 지면 아래 빗금이 차지하는 만큼이다.
-    rows[E.id] = (i + 1) * band - H / 2 - 70;
-    flips[E.id] = E.q === ME;
-  });
-  return live;
-}
-/** 이 줄이 뒤집혀 있나. 뒤집혔으면 화면 왼쪽이 q 다. */
-function flipped(E) { return !!flips[E.id]; }
-/** 뒤집힘을 반영한 좌우 부호. */
+/* ── 좌표 ────────────────────────────────────────────────────────────
+ *
+ * **내 성은 늘 왼쪽.** 변마다 내가 p 였다 q 였다 하는데 그대로 그리면
+ * 미는 방향이 뒤집혀 헷갈린다. 내가 오른쪽 끝인 변은 좌우를 뒤집는다.
+ */
+let groundY = 0;
+function flipped(E) { return E.q === ME; }
 function sgn(E) { return flipped(E) ? -1 : 1; }
-/** 변 위의 (거리, 지면 위 높이) 를 화면 좌표로. */
+/** 변 위의 (거리, 지면 위 높이) 를 큰 화면 좌표로. */
 function pt(E, x, h) {
-  return { x: (x - centerOf(E)) * sgn(E), y: (rows[E.id] || 0) + (h || 0) };
+  return { x: (x - centerOf(E)) * sgn(E), y: groundY + (h || 0) };
 }
-
-/* ── 카메라 ─────────────────────────────────────────────────────────── */
-
-function fitZoom() { return baseZoom(); }
+/** 큰 화면에 지금 서 있는 변. 없으면 내 첫 전선. */
+function focused() {
+  const E = G.E[G.view];
+  if (E && G.live.includes(E.id) && onEdge(E, ME)) return E;
+  return liveEdges().find(x => onEdge(x, ME)) || liveEdges()[0] || null;
+}
 
 export function resize() {
   const r = cv.getBoundingClientRect();
@@ -132,20 +83,14 @@ export function resize() {
   setZoom(zoom < f * 1.02 ? f : zoom);
 }
 
-/** 세 길이 다 보이도록 물러선다. */
+/** 큰 화면을 기본 배율·자리로 되돌린다. */
 export function survey() {
   const f = fitZoom();
-  setFit(f); setZoom(f);
+  setFit(f); setZoom(f); setCam(0, 0);
   centers = {};
-  // 비워 둔 윗자리만큼 내려 앉힌다.
-  setCam(0, -(TOP_PAD / 2) / f);
 }
-
-/** 그 줄을 화면 가운데로. 배율은 건드리지 않는다. */
-export function focus(E) {
-  if (!E || zoom <= zoomFit * 1.05) return;
-  setCam(0, rows[E.id] || 0);
-}
+export function focus() { setCam(0, 0); }
+export function follow() {}
 
 export function panBy(dx, dy) { setCam(camX - dx / zoom, camY - dy / zoom); }
 export function zoomBy(f, ax, ay) {
@@ -155,18 +100,22 @@ export function zoomBy(f, ax, ay) {
   setCam(camX + (before.x - after.x), camY + (before.y - after.y));
 }
 export function toWorld(sx, sy) {
-  return { x: camX + (sx - cw / 2) / zoom, y: camY + (sy - ch / 2) / zoom };
+  return { x: camX + (sx - cw / 2) / zoom, y: camY + (sy - bigH() / 2 - TOP_PAD) / zoom };
 }
 
-/** 눌린 줄. 그 전선을 고르는 데 쓴다. */
+/** 큰 화면이 차지하는 높이(화면 px). 얇은 띠들이 아래를 가져간다. */
+function bigH() {
+  const n = Math.max(0, liveEdges().length - 1);
+  return Math.max(120, ch - TOP_PAD - n * STRIP_H);
+}
+
+/** 눌린 자리의 얇은 띠. 그 전선으로 갈아탄다. */
 export function pickEdge(sx, sy) {
-  const w = toWorld(sx, sy);
-  let best = null, bd = band * .5;
-  for (const E of liveEdges()) {
-    const d = Math.abs(w.y - (rows[E.id] || 0));
-    if (d < bd) { bd = d; best = E.id; }
-  }
-  return best;
+  const strips = liveEdges().filter(E => E !== focused());
+  const top = TOP_PAD + bigH();
+  if (sy < top) return null;
+  const i = Math.floor((sy - top) / STRIP_H);
+  return strips[i] ? strips[i].id : null;
 }
 
 /* ── 그리기 ─────────────────────────────────────────────────────────── */
@@ -175,96 +124,155 @@ export function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#e9eef2'; ctx.fillRect(0, 0, cw, ch);
   if (!G) return;
-  const live = layout();
+  const live = liveEdges();
+  for (const E of live) advanceCenter(E);
 
-  const sh = G.shake > 0 ? G.shake * 9 : 0;
-  const sx = sh ? (Math.random() - .5) * sh : 0, sy = sh ? (Math.random() - .5) * sh : 0;
-  ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom,
-    (cw / 2 - (camX - sx) * zoom) * dpr, (ch / 2 - (camY - sy) * zoom) * dpr);
+  const big = focused();
+  const H = bigH();
 
-  for (const E of live) lane(E);
-
-  // 병사는 아래 줄이 앞이다. 같은 줄 안에서는 lane 값으로 앞뒤를 가른다.
-  const cast = [];
-  const drew = new Set();          // 광부를 이미 세운 사람
-  for (const E of live) {
-    const s = sgn(E);
-    for (const u of E.units) {
-      const p = pt(E, u.x, u.yo);
-      u.px = p.x; u.py = p.y; u.face = u.dir * s; cast.push(u);
-    }
-    // 광부는 **사람마다 딱 한 줄에만** 세운다.
-    //
-    // 성은 두 줄에 나타나는데 광부까지 두 번 그리면 같은 여섯 명이 두 번
-    // 보여 몇 명인지 알 수 없다. 반대로 한쪽 끝에만 그리면 늘 오른쪽에
-    // 서는 사람은 광부가 아예 안 보인다. 그래서 **처음 만나는 줄**에 세운다.
-    for (const pos of ['p', 'q']) {
-      const who = pos === 'p' ? E.p : E.q;
-      const P = W(who);
-      if (!P || !P.alive || drew.has(who)) continue;
-      drew.add(who);
-      const onLeft = (pos === 'p') !== flipped(E);
-      for (const m of P.miners) {
-        const x = pos === 'p' ? GATE_OFF - m.hx : E.len - GATE_OFF + m.hx;
-        const p = pt(E, x, 0);
-        m.px = p.x; m.py = p.y;
-        // 광산은 늘 자기 성의 바깥쪽이다. 캐러 갈 때 그쪽을 본다.
-        m.face = (m.job === 'toMine' ? -1 : 1) * (onLeft ? 1 : -1);
-        cast.push(m);
-      }
-    }
+  if (big) {
+    // 큰 화면 — 지면은 아래쪽에 붙이고 그 위가 통째로 머리 공간이다.
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, TOP_PAD, cw, H); ctx.clip();
+    const sh = G.shake > 0 ? G.shake * 9 : 0;
+    const sx = sh ? (Math.random() - .5) * sh : 0, sy = sh ? (Math.random() - .5) * sh : 0;
+    groundY = 0;
+    const gyScreen = TOP_PAD + H - 42;
+    ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom,
+      (cw / 2 - (camX - sx) * zoom) * dpr, (gyScreen - (camY - sy) * zoom) * dpr);
+    lane(big);
+    ctx.restore();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  cast.sort((a, b) => (a.py - b.py) || (a.yo - b.yo));
-  for (const u of cast) drawUnit(u);
 
-  for (const E of live) fx(E);
+  const strips = live.filter(E => E !== big);
+  strips.forEach((E, i) => strip(E, TOP_PAD + H + i * STRIP_H));
 }
 
-/** 줄 하나 — minchan_6 의 가로 전장 그대로다. */
+/** 큰 화면의 한 줄. minchan_6 의 전장 그대로다. */
 function lane(E) {
-  const y = rows[E.id];
+  const y = 0;
   const a = pt(E, 0, 0).x, b = pt(E, E.len, 0).x;
   const L = Math.min(a, b), R = Math.max(a, b);
-
-  // 땅
   ctx.fillStyle = '#d5dfe7'; ctx.beginPath(); ctx.moveTo(L, y);
   for (let x = L; x < R + 44; x += 44) ctx.lineTo(x, y - 40 - Math.sin(x * .004) * 20 - Math.sin(x * .011) * 9);
   ctx.lineTo(R, y); ctx.closePath(); ctx.fill();
 
   ctx.strokeStyle = '#1b2430'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(L - 20, y); ctx.lineTo(R + 20, y); ctx.stroke();
-  ctx.fillStyle = '#dbe3ea'; ctx.fillRect(L - 20, y, (R - L) + 40, 46);
+  ctx.fillStyle = '#dbe3ea'; ctx.fillRect(L - 20, y, (R - L) + 40, 60);
   ctx.strokeStyle = '#c2ced8'; ctx.lineWidth = 2;
   ctx.beginPath();
   for (let x = L; x < R; x += 26) { ctx.moveTo(x, y + 5); ctx.lineTo(x - 9, y + 16); }
   ctx.stroke();
 
-  // 지금 고른 전선은 밑줄로 알린다.
-  if (E.id === G.view) {
-    ctx.strokeStyle = TEAM[G.P[E.p].alive ? E.p : E.q].c;
-    ctx.globalAlpha = .5; ctx.lineWidth = 6;
-    ctx.beginPath(); ctx.moveTo(L - 20, y + 50); ctx.lineTo(R + 20, y + 50); ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-
-  for (const pos of ['p', 'q']) {
-    const g = pos === 'p' ? E.gp : E.gq;
-    mine(E, pos); gate(E, g);
-  }
+  for (const pos of ['p', 'q']) { mine(E, pos); gate(E, pos === 'p' ? E.gp : E.gq); }
   if (E.via) ruin(E);
 
-  // 전선 눈금
-  const f = pt(E, E.front, 0);
+  const cast = [];
+  const s = sgn(E);
+  for (const u of E.units) {
+    const p = pt(E, u.x, u.yo);
+    u.px = p.x; u.py = p.y; u.face = u.dir * s; cast.push(u);
+  }
+  for (const pos of ['p', 'q']) {
+    const who = pos === 'p' ? E.p : E.q;
+    const P = W(who);
+    if (!P || !P.alive) continue;
+    const onLeft = (pos === 'p') !== flipped(E);
+    for (const m of P.miners) {
+      const x = pos === 'p' ? GATE_OFF - m.hx : E.len - GATE_OFF + m.hx;
+      const p = pt(E, x, 0);
+      m.px = p.x; m.py = p.y;
+      m.face = (m.job === 'toMine' ? -1 : 1) * (onLeft ? 1 : -1);
+      cast.push(m);
+    }
+  }
+  cast.sort((x, z) => x.yo - z.yo);
+  for (const u of cast) drawUnit(u);
+  fx(E);
+}
+
+/**
+ * 얇은 띠 — 그 전선의 **길 전체**를 한눈에.
+ *
+ * 여기서는 병사를 사람으로 그리지 않는다. 이 자리에서 알고 싶은 것은
+ * "누가 어디까지 밀었나" 지 "누가 칼을 들었나" 가 아니다. 점 하나면 된다.
+ */
+function strip(E, top) {
+  const padX = 58, y = top + STRIP_H * .62;
+  const w = cw - padX * 2;
+  const fl = flipped(E);
+  const at = x => padX + (fl ? (1 - x / E.len) : (x / E.len)) * w;
+  const leftWho = fl ? E.q : E.p, rightWho = fl ? E.p : E.q;
+
+  ctx.fillStyle = '#eef2f5'; ctx.fillRect(0, top, cw, STRIP_H);
+  ctx.strokeStyle = '#cdd8e1'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, top + .5); ctx.lineTo(cw, top + .5); ctx.stroke();
+
+  // 길
+  ctx.strokeStyle = '#c2ced8'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(at(0), y); ctx.lineTo(at(E.len), y); ctx.stroke();
+
+  // 폐허
+  if (E.via) {
+    ctx.fillStyle = '#9aa6b2';
+    ctx.beginPath(); ctx.arc(at(E.ruin), y, 4, 0, 7); ctx.fill();
+  }
+
+  // 병사 — 점. 몸집이 클수록 크게. 큰 것은 테두리를 둘러 눈에 걸리게 한다.
+  for (const u of E.units) {
+    if (u.dead) continue;
+    const r = Math.min(4.5, 1.6 + u.size / 150);
+    ctx.beginPath(); ctx.arc(at(u.x), y + (u.lane - 3) * 1.6, r, 0, 7);
+    ctx.fillStyle = TEAM[u.own].c; ctx.fill();
+    if (u.size >= 150) { ctx.strokeStyle = '#f2f6fa'; ctx.lineWidth = 1.1; ctx.stroke(); }
+  }
+
+  // 전선
   const t = E.front / E.len;
   ctx.strokeStyle = t < .5 ? TEAM[E.q].c : TEAM[E.p].c;
-  ctx.lineWidth = 5; ctx.globalAlpha = .7;
-  ctx.beginPath(); ctx.moveTo(f.x, f.y - 46); ctx.lineTo(f.x, f.y + 10); ctx.stroke();
-  ctx.globalAlpha = 1;
+  ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.moveTo(at(E.front), y - 13); ctx.lineTo(at(E.front), y + 13); ctx.stroke();
+
+  // 양 끝 성
+  for (const [who, x] of [[leftWho, at(fl ? E.len : 0)], [rightWho, at(fl ? 0 : E.len)]]) {
+    const P = W(who), T = TEAM[who];
+    ctx.fillStyle = P.alive ? T.c : '#8f9aa5';
+    ctx.fillRect(x - 7, y - 11, 14, 22);
+    ctx.strokeStyle = '#10161c'; ctx.lineWidth = 1.4;
+    ctx.strokeRect(x - 7, y - 11, 14, 22);
+    if (P.alive) {
+      const r = Math.max(0, P.hp / P.max);
+      ctx.fillStyle = 'rgba(16,22,28,.55)';
+      ctx.fillRect(x - 7, y - 11, 14, 22 * (1 - r));
+    }
+  }
+
+  // 이름과 눌러서 갈아타라는 표시
+  ctx.font = '800 11px Nanum Gothic, sans-serif';
+  ctx.textAlign = 'left'; ctx.fillStyle = TEAM[leftWho].c;
+  ctx.fillText(TEAM[leftWho].nm, 6, y + 4);
+  ctx.textAlign = 'right'; ctx.fillStyle = TEAM[rightWho].c;
+  ctx.fillText(TEAM[rightWho].nm, cw - 6, y + 4);
+
+  // **밀리면 붉게 알린다.** 안 보고 있는 전선이 위험해도 숫자를 훑어야만
+  // 아는 것은 재미가 아니라 잡일이다.
+  if (onEdge(E, ME)) {
+    const d = E.p === ME ? 1 : -1;
+    const gx = d > 0 ? E.gp.x : E.gq.x;
+    const push = clamp(((E.front - gx) * d) / Math.max(1, E.len - GATE_OFF * 2), 0, 1);
+    if (push < .22) {
+      const a2 = .18 + Math.abs(Math.sin(G.t * 5)) * .22;
+      ctx.fillStyle = 'rgba(224,96,92,' + a2.toFixed(3) + ')';
+      ctx.fillRect(0, top, cw, STRIP_H);
+    }
+  }
 }
 
 function mine(E, pos) {
   const x = pt(E, pos === 'p' ? MINE_OFF : E.len - MINE_OFF, 0).x;
-  const y = rows[E.id];
+  const y = groundY;
   ctx.save(); ctx.lineWidth = 3; ctx.lineJoin = 'round';
   ctx.strokeStyle = '#1b2430'; ctx.fillStyle = '#e3ebf1';
   ctx.beginPath();
@@ -280,7 +288,7 @@ function mine(E, pos) {
 
 function gate(E, g) {
   const P = W(g.owner), T = TEAM[g.owner];
-  const x = pt(E, g.x, 0).x, y = rows[E.id];
+  const x = pt(E, g.x, 0).x, y = groundY;
   // 깃발과 이름은 **화면에서 바깥쪽**을 본다. p/q 로 정하면 뒤집힌 줄에서
   // 깃발이 성 안쪽을 향한다.
   const out = x < 0 ? 1 : -1;
@@ -318,7 +326,7 @@ function gate(E, g) {
 
 /** 무너진 성. 두 길을 이어 붙인 자리에 남는다. */
 function ruin(E) {
-  const x = pt(E, E.ruin, 0).x, y = rows[E.id];
+  const x = pt(E, E.ruin, 0).x, y = groundY;
   ctx.save(); ctx.lineWidth = 3.4; ctx.lineJoin = 'round';
   ctx.strokeStyle = '#6b7785'; ctx.fillStyle = '#cfd8e0';
   ctx.beginPath();
