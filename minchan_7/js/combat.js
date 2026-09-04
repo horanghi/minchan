@@ -1,4 +1,4 @@
-import { gy, ULT_CD, clamp } from './world.js';
+import { gy, ULT_CD, clamp, onEdge } from './world.js';
 import { G, W, dmgMul, foeGate, fall } from './state.js';
 import { beep } from './sound.js';
 
@@ -305,7 +305,9 @@ export function mgTick(u, dt) {
  */
 export function castRain(who, E) {
   const P = W(who);
+  // 남의 전선에는 못 내린다. 끼지 않은 싸움을 흔들 수 있어선 안 된다.
   if (!P || !P.alive || P.rainCd > 0 || G.over || !E) return false;
+  if (!G.live.includes(E.id) || !onEdge(E, who)) return false;
   const w = Math.min(E.len, 900);
   E.rain.push({ t: 1.7, tick: 0, own: who, x0: clamp(E.front - w / 2, 0, E.len - w), w });
   P.rainCd = ULT_CD;

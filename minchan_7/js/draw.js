@@ -1,6 +1,6 @@
 import {
   ctx, cw, ch, dpr, camX, camY, zoom, zoomFit, TEAM, ME,
-  GATE_OFF, MINE_OFF, EDGE_LEN, laneX,
+  GATE_OFF, MINE_OFF,
   setGeom, setCam, setZoom, setFit, clamp,
 } from './world.js';
 import { G, W, liveEdges } from './state.js';
@@ -25,9 +25,30 @@ let rows = {};
  */
 /** 배너가 첫 줄을 가리지 않게 위를 이만큼(화면 px) 비워 둔다. */
 const TOP_PAD = 74;
-function gapFor(n) {
-  const zw = cw / (EDGE_LEN + 300);
-  return clamp(((ch - TOP_PAD) / Math.max(1e-6, zw) - 300) / Math.max(1, n), 520, 1200);
+
+/**
+ * 한 줄에 **한 번에 보여 줄 길이**(전장 px).
+ *
+ * 길 전체(1560)를 다 담으면 세 줄을 세우는 순간 병사가 손톱만 해진다.
+ * minchan_6 도 전장을 다 보여 주지 않았다 — 600~940 만큼 잘라 카메라로
+ * 따라다녔다. 여기서는 **줄마다 제 전선 쪽을 잘라** 보여준다. 세 판이
+ * 다 보이면서도 병사가 병사만 하다.
+ */
+const VIEWW = 960;
+
+/** 폭으로 정해지는 기본 배율. 이 배율에서 병사 크기가 원래 스틱맨과 비슷하다. */
+function baseZoom() { return cw / VIEWW; }
+
+/**
+ * 줄 하나가 차지하는 띠의 높이(전장 px).
+ *
+ * 화면을 줄 수만큼 고르게 나눈다. **지면은 띠의 아래쪽**에 두어, 그 위가
+ * 통째로 그 줄의 머리 공간이 된다 — 안 그러면 첫 줄의 성과 타이탄이 화면
+ * 위로 잘려 나간다.
+ */
+function bandFor(n) {
+  const z = zoom || baseZoom();
+  return ((ch - TOP_PAD) / Math.max(1e-6, z)) / Math.max(1, n);
 }
 /**
  * 줄을 세운다.
@@ -41,16 +62,49 @@ function gapFor(n) {
  * 내 성이 왼쪽이었다 오른쪽이었다 해서 **미는 방향이 뒤집힌다.** 내가
  * 오른쪽 끝인 변은 좌우를 뒤집어 눕힌다.
  */
-let flips = {};
+let flips = {}, centers = {};
+
+/**
+ * 그 줄에서 화면 한가운데에 놓을 지점.
+ *
+ * 전선을 따라가되 길 밖으로는 나가지 않는다. 전선이 튀어도 화면이 덜컹이지
+ * 않게 조금씩 따라간다.
+ *
+ * **프레임마다 한 번만 옮긴다.** 좌표를 바꿀 때마다 옮기면(pt 는 유닛·입자
+ * 수만큼 불린다) 부드럽게 따라가는 게 아니라 그 자리에서 튀고, 더 나쁘게는
+ * **같은 줄인데 지면과 병사가 서로 다른 중심으로 그려져** 어긋난다.
+ */
+function advanceCenters(live) {
+  for (const E of live) {
+    const half = Math.min(VIEWW / 2, E.len / 2);
+    const want = clamp(E.front, half, E.len - half);
+    const cur = centers[E.id];
+    centers[E.id] = cur === undefined ? want : cur + (want - cur) * .08;
+  }
+}
+function centerOf(E) {
+  const c = centers[E.id];
+  if (c !== undefined) return c;
+  const half = Math.min(VIEWW / 2, E.len / 2);
+  return (centers[E.id] = clamp(E.front, half, E.len - half));
+}
+
+let band = 500;
 function layout() {
   const all = G ? liveEdges() : [];
   const mine = all.filter(E => E.p === ME || E.q === ME);
   const rest = all.filter(E => !mine.includes(E));
   const live = [...mine, ...rest];
-  const g = gapFor(live.length || 3);
+  advanceCenters(live);
+  const n = live.length || 3;
+  band = bandFor(n);
+  const H = band * n;
   rows = {}; flips = {};
   live.forEach((E, i) => {
-    rows[E.id] = (i - (live.length - 1) / 2) * g;
+    // 지면은 자기 띠의 **바닥**에 붙인다. 그 위가 통째로 이 줄의 머리
+    // 공간이라야 첫 줄의 타이탄이 화면 밖으로 삐져나오지 않는다.
+    // 70 은 지면 아래 빗금이 차지하는 만큼이다.
+    rows[E.id] = (i + 1) * band - H / 2 - 70;
     flips[E.id] = E.q === ME;
   });
   return live;
@@ -61,22 +115,12 @@ function flipped(E) { return !!flips[E.id]; }
 function sgn(E) { return flipped(E) ? -1 : 1; }
 /** 변 위의 (거리, 지면 위 높이) 를 화면 좌표로. */
 function pt(E, x, h) {
-  return { x: laneX(E, x) * sgn(E), y: (rows[E.id] || 0) + (h || 0) };
+  return { x: (x - centerOf(E)) * sgn(E), y: (rows[E.id] || 0) + (h || 0) };
 }
 
 /* ── 카메라 ─────────────────────────────────────────────────────────── */
 
-function bounds() {
-  // 판이 열리기 전에도 화면 크기는 잡아야 한다. 그때는 기본 세 줄로 친다.
-  const live = G ? liveEdges() : [];
-  const wide = live.length ? Math.max(EDGE_LEN, ...live.map(E => E.len)) : EDGE_LEN;
-  const n = live.length || 3;
-  return { w: wide + 300, h: n * gapFor(n) + 300 };
-}
-function fitZoom() {
-  const b = bounds();
-  return Math.min(cw / b.w, ch / b.h);
-}
+function fitZoom() { return baseZoom(); }
 
 export function resize() {
   const r = cv.getBoundingClientRect();
@@ -92,6 +136,7 @@ export function resize() {
 export function survey() {
   const f = fitZoom();
   setFit(f); setZoom(f);
+  centers = {};
   // 비워 둔 윗자리만큼 내려 앉힌다.
   setCam(0, -(TOP_PAD / 2) / f);
 }
@@ -101,12 +146,6 @@ export function focus(E) {
   if (!E || zoom <= zoomFit * 1.05) return;
   setCam(0, rows[E.id] || 0);
 }
-
-/**
- * 카메라는 **따라다니지 않는다.** 전선을 고를 때마다 화면이 미끄러지면
- * 어디가 어디인지 알 수 없게 된다. 옮기고 싶으면 손으로 끈다.
- */
-export function follow() {}
 
 export function panBy(dx, dy) { setCam(camX - dx / zoom, camY - dy / zoom); }
 export function zoomBy(f, ax, ay) {
@@ -122,7 +161,7 @@ export function toWorld(sx, sy) {
 /** 눌린 줄. 그 전선을 고르는 데 쓴다. */
 export function pickEdge(sx, sy) {
   const w = toWorld(sx, sy);
-  let best = null, bd = gapFor(liveEdges().length) * .5;
+  let best = null, bd = band * .5;
   for (const E of liveEdges()) {
     const d = Math.abs(w.y - (rows[E.id] || 0));
     if (d < bd) { bd = d; best = E.id; }
@@ -184,7 +223,8 @@ export function draw() {
 /** 줄 하나 — minchan_6 의 가로 전장 그대로다. */
 function lane(E) {
   const y = rows[E.id];
-  const L = laneX(E, 0), R = laneX(E, E.len);
+  const a = pt(E, 0, 0).x, b = pt(E, E.len, 0).x;
+  const L = Math.min(a, b), R = Math.max(a, b);
 
   // 땅
   ctx.fillStyle = '#d5dfe7'; ctx.beginPath(); ctx.moveTo(L, y);

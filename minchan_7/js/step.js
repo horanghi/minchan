@@ -15,7 +15,12 @@ export function step(dt) {
   if (G.shake > 0) G.shake = Math.max(0, G.shake - dt);
 
   for (const w of PLAYERS) if (G.P[w].alive) stepPlayer(G.P[w], dt);
-  for (const E of liveEdges()) { useEdge(E); stepEdge(E, dt); }
+  // 굴리는 도중 성이 무너지면 변이 합쳐지며 목록이 바뀐다. 미리 뜬 목록을
+  // 그대로 돌면 **이미 사라진 변을 한 번 더 굴린다.** 매번 다시 확인한다.
+  for (const E of liveEdges()) {
+    if (!G.live.includes(E.id)) continue;
+    useEdge(E); stepEdge(E, dt);
+  }
 }
 
 /* ── 살림 ───────────────────────────────────────────────────────────── */
@@ -235,7 +240,9 @@ function turrets(E, dt) {
 function shots(E, dt) {
   for (const s of E.shots) {
     s.t += dt;
-    const k = s.t / s.dur;
+    // 1 을 넘기지 않는다. 넘긴 채로 자리를 계산하면 **목표를 지나친 곳에서**
+    // 광역이 터진다 — 한 프레임이 길면 30px 넘게 밀린다.
+    const k = Math.min(1, s.t / s.dur);
     s.x = s.x0 + (s.tx - s.x0) * k;
     s.y = s.y0 + (s.ty - s.y0) * k - (s.flat ? 0 : Math.sin(Math.PI * k) * 38);
     if (k >= 1) {

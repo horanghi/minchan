@@ -1,4 +1,4 @@
-import { MAX_MINERS } from './world.js';
+import { MAX_MINERS, onEdge } from './world.js';
 import { TYPES } from './types.js';
 import { G, W, spawn, spawnMiner, minerCount } from './state.js';
 
@@ -17,6 +17,11 @@ export function buy(k, who, E) {
   if (P.gold < T.cost) return false;
   P.gold -= T.cost;
   if (k === 'miner') spawnMiner(who);
-  else { if (!E) { P.gold += T.cost; return false; } spawn(k, who, E); }
+  else {
+    // **내가 낀 전선에만 보낸다.** 화면에는 남의 싸움도 보이는데, 거기에
+    // 병사를 넣으면 남의 성문 앞에 내 병사가 솟아난다. 지불 전에 막는다.
+    if (!E || !G.live.includes(E.id) || !onEdge(E, who)) { P.gold += T.cost; return false; }
+    spawn(k, who, E);
+  }
   return true;
 }
