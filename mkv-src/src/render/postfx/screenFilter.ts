@@ -46,6 +46,8 @@ uniform vec4 uInputSize;
 /** 픽셀 단위 RGB 분리량. 0 이면 색수차가 없다. */
 uniform float uAberration;
 uniform float uVignette;
+/** 가장자리를 섞을 색. 검정이면 예전처럼 어두워지기만 한다 (포위 경고는 붉다). */
+uniform vec3 uVignetteTint;
 uniform float uGrain;
 uniform float uTime;
 
@@ -73,7 +75,10 @@ void main(void) {
   if (uVignette > 0.0) {
     vec2 d = (uv - vec2(0.5)) * 2.0;
     float edge = dot(d, d);
-    color.rgb *= 1.0 - uVignette * edge * edge;
+    // 검정 tint 이면 color *= 1 - k 와 같다. 색을 주면 그 색 쪽으로 가라앉는다.
+    // 입출력은 premultiplied 라 tint 에도 alpha 를 곱해야 rgb <= a 가 유지된다.
+    // 셰이크로 하늘이 비켜 alpha < 1 인 가장자리가 생기는데, 그 자리가 k 가 가장 큰 곳이다.
+    color.rgb = mix(color.rgb, uVignetteTint * color.a, clamp(uVignette * edge * edge, 0.0, 1.0));
   }
 
   if (uGrain > 0.0) {
@@ -104,6 +109,7 @@ export class ScreenFilter extends Filter {
         screenUniforms: {
           uAberration: { value: 0, type: 'f32' },
           uVignette: { value: options.vignette ?? 0.25, type: 'f32' },
+          uVignetteTint: { value: new Float32Array([0, 0, 0]), type: 'vec3<f32>' },
           uGrain: { value: options.grain ?? 0.03, type: 'f32' },
           uTime: { value: 0, type: 'f32' },
         },
@@ -111,8 +117,8 @@ export class ScreenFilter extends Filter {
     })
   }
 
-  private get uniforms(): Record<string, number> {
-    return (this.resources['screenUniforms'] as { uniforms: Record<string, number> }).uniforms
+  private get uniforms(): Record<string, number | Float32Array> {
+    return (this.resources['screenUniforms'] as { uniforms: Record<string, number | Float32Array> }).uniforms
   }
 
   /** 픽셀 단위 분리량. `fx/aberration.ts` 의 pixelOffset 을 그대로 받는다. */
@@ -122,6 +128,19 @@ export class ScreenFilter extends Filter {
 
   set vignette(value: number) {
     this.uniforms['uVignette'] = value
+  }
+
+  /**
+   * [r, g, b] 0..1. `fx/surround.ts` 의 rgbOf() 가 만든 것을 그대로 받는다 —
+   * 색수차가 pixelOffset() 을 받듯, 변환은 fx 가 하고 렌더 층은 숫자만 받는다.
+   *
+   * 유니폼 배열을 **제자리에서** 바꾼다. pixi 는 non-static 유니폼 그룹을 매 렌더마다
+   * 자기 캐시와 원소별로 비교해 동기화하므로 이 변경이 GPU 까지 간다. 불변 규칙의
+   * 의도적 예외다 — `isStatic: true` 로 바꾸면 `update()` 를 직접 불러야 한다.
+   */
+  set vignetteTint(rgb: readonly [number, number, number]) {
+    const target = this.uniforms['uVignetteTint'] as Float32Array
+    target.set(rgb)
   }
 
   set grain(value: number) {
