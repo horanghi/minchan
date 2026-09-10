@@ -19,7 +19,7 @@ import {
   type Enemy, type EnemyKind,
 } from '../entities/enemies/enemy.ts'
 import { stepCorvid } from '../entities/enemies/corvid.ts'
-import { stepGhoul, isVulnerable } from '../entities/enemies/ghoul.ts'
+import { stepGhoul } from '../entities/enemies/ghoul.ts'
 import { stepGrimm } from '../entities/enemies/grimm.ts'
 import { stepLevin, strikeBoxOfLevin } from '../entities/enemies/levin.ts'
 import { stepEmber, fireballsOfEmber } from '../entities/enemies/ember.ts'
@@ -27,10 +27,11 @@ import { stepPyre } from '../entities/enemies/pyre.ts'
 import { reachBoxOf } from '../entities/enemies/reach.ts'
 import { stepFrostfang, isRecovering } from '../entities/enemies/frostfang.ts'
 import { stepRinger, isEmpowering, RINGER } from '../entities/enemies/ringer.ts'
-import { stepBogman, isHarmless, isSubmerged } from '../entities/enemies/bogman.ts'
+import { stepBogman, isHarmless } from '../entities/enemies/bogman.ts'
 import { stepSpore, poisonSpawnOfSpore } from '../entities/enemies/spore.ts'
 import { stepGaoler } from '../entities/enemies/gaoler.ts'
-import { stepWisp, isMaterialized, isSettling } from '../entities/enemies/wisp.ts'
+import { stepWisp, isSettling } from '../entities/enemies/wisp.ts'
+import { canBeHit } from '../entities/enemies/vulnerable.ts'
 import { nextClip } from '../entities/player/animation.ts'
 import { createPlayer, stepPlayer, type Player } from '../entities/player/player.ts'
 import {
@@ -199,19 +200,6 @@ function causeOfHit(
     return reach !== null && overlaps(reach, playerBox)
   })
   return struck ? struck.kind : null
-}
-
-/**
- * 지금 이 적을 때릴 수 있는가.
- *
- * **무적과 무해는 한 쌍이다.** 못 때리는 적에게 맞으면 부당하다 —
- * 솟는 중인 좀비, 물속의 늪지기, 실체가 아닌 번개령이 전부 같은 규칙을 따른다.
- */
-function canBeHit(enemy: Enemy): boolean {
-  if (!isVulnerable(enemy)) return false
-  if (isSubmerged(enemy)) return false
-  if (enemy.kind === 'wisp' && !isMaterialized(enemy)) return false
-  return true
 }
 
 /**

@@ -20,6 +20,7 @@ import { boxOfHazard, type HazardKind } from './entities/bosses/hazard.ts'
 import { boxOfChest, boxOfItem } from './entities/pickups/chest.ts'
 import { boxOfEnemy } from './entities/enemies/enemy.ts'
 import { NO_ABERRATION, pixelOffset, step as stepAberration, trigger as triggerAberration } from './fx/aberration.ts'
+import { NO_SURROUND, countSurrounding, rgbOf, stepSurround, vignetteOf } from './fx/surround.ts'
 import { skeletonizeFrame } from './fx/dissolve.ts'
 import { RELIC_LIGHT, limitLights, type Light } from './fx/light.ts'
 import { ARMOR_BREAK_TIMING, DEATH_TIMING } from './fx/sequence.ts'
@@ -351,6 +352,7 @@ let world: World = createWorld(stage, balance)
  */
 let quality: QualityState = createQuality('medium')
 let aberration = NO_ABERRATION
+let surround = NO_SURROUND
 let deathFlesh: readonly string[] | null = null
 let showDebugBoxes = DEV
 let hud: HudState = INITIAL_HUD
@@ -408,6 +410,7 @@ function reset(): void {
   director.reset()
   deathFlesh = null
   aberration = NO_ABERRATION
+  surround = NO_SURROUND
   breakFx.clear()
 }
 
@@ -593,6 +596,14 @@ app.ticker.add(() => {
 
   aberration = stepAberration(aberration, frameMs)
   screenFilter.aberration = pixelOffset(aberration)
+  // 포위 경고 — 월드가 내놓은 적 목록을 그대로 센다. 품질 설정과 무관하게 항상 켠다 (경고는 정보다).
+  // 죽은 사람에게 경고는 정보가 아니다 — 램프는 내려가면서 사망 연출(채도 하강)에 자리를 비운다.
+  // 시간은 슬로우모션·프레임 스텝을 반영한 slice 를 쓰고, 탭 복귀 첫 프레임의 수 초는 잘라 팝을 막는다.
+  const threat = world.vitals.dead ? 0 : countSurrounding(world.enemies, world.player.body)
+  surround = stepSurround(surround, threat, playable ? Math.min(slice.frameMs, MAX_UI_STEP_MS) : 0)
+  const warn = vignetteOf(surround)
+  screenFilter.vignette = warn.strength
+  screenFilter.vignetteTint = rgbOf(warn.tint)
   screenFilter.grain = features.grain ? 0.03 : 0
   screenFilter.time = now / 1000
 
