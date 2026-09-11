@@ -1,0 +1,36 @@
+# 마령촌(mkv-src) CI — PR 마다 테스트·타입체크·빌드를 먼저 돌린다.
+# AI-First 파이프라인의 PR 은 사람 리뷰 전에 여기서 걸러진다 (Autofix 가 실패를 받아 고친다).
+name: mkv-ci
+
+on:
+  pull_request:
+    paths: ['mkv-src/**', '.github/workflows/mkv-ci.yml']
+  push:
+    branches: [main]
+    paths: ['mkv-src/**']
+
+concurrency:
+  group: mkv-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mkv-src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mkv-src/package-lock.json
+      - run: npm ci
+      - name: 테스트 + 커버리지 임계치
+        run: npx vitest run --coverage
+      - name: 타입체크
+        run: npx tsc --noEmit
+      - name: 빌드 + 초기 로드 크기 검사
+        run: npx vite build && node scripts/check-size.mjs
