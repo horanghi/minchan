@@ -20,7 +20,7 @@ const balance = loadBalance()
 /** 그 자리에 못 박고 패턴을 끝까지 돌린다. 맞으면 참. */
 function hitAt(pattern: 'slam' | 'throw' | 'quake', gapPx: number): boolean {
   const base = createWorld(STAGE_1, balance)
-  const bossX = base.cairn.x
+  const bossX = base.boss.x
   const groundY = (base.map.height - 1) * 16
   const standX = bossX - gapPx
 
@@ -29,7 +29,7 @@ function hitAt(pattern: 'slam' | 'throw' | 'quake', gapPx: number): boolean {
     // 스테이지 잡몹을 치운다. 재는 것은 **보스 패턴이 닿는가** 이지
     // 근처 좀비가 걸어오는가가 아니다.
     enemies: [],
-    cairn: { ...base.cairn, awake: true, state: pattern, stateFrames: 0, facing: -1 },
+    boss: { ...base.boss, awake: true, state: pattern, stateFrames: 0, facing: -1 },
   }
 
   for (let i = 0; i < 240; i += 1) {
@@ -40,7 +40,7 @@ function hitAt(pattern: 'slam' | 'throw' | 'quake', gapPx: number): boolean {
       vitals: { ...w.vitals, iFrames: 0, dead: false, armor: 'steel' },
       // 패턴이 끝나면 대기에 못 박는다. 안 그러면 보스가 다음 공격을 골라
       // 이 함수가 "그 패턴이 닿았는가" 를 재지 못한다.
-      cairn: w.cairn.state === 'idle' ? { ...w.cairn, stateFrames: 0 } : w.cairn,
+      boss: w.boss.state === 'idle' ? { ...w.boss, stateFrames: 0 } : w.boss,
     }
     const step = stepWorld(w, INITIAL_INPUT, balance)
     w = step.world
@@ -52,14 +52,14 @@ function hitAt(pattern: 'slam' | 'throw' | 'quake', gapPx: number): boolean {
 /** 그 거리에서 던진 창이 보스에게 닿는가. */
 function spearReaches(gapPx: number): boolean {
   const base = createWorld(STAGE_1, balance)
-  const bossX = base.cairn.x
+  const bossX = base.boss.x
   const groundY = (base.map.height - 1) * 16
   const standX = bossX - gapPx
 
   let w: World = {
     ...base,
     enemies: [],
-    cairn: { ...base.cairn, awake: true, state: 'idle', stateFrames: 0, facing: -1 },
+    boss: { ...base.boss, awake: true, state: 'idle', stateFrames: 0, facing: -1 },
     player: {
       ...base.player,
       facing: 1,
@@ -71,7 +71,7 @@ function spearReaches(gapPx: number): boolean {
     w = {
       ...w,
       player: { ...w.player, facing: 1, body: { ...w.player.body, x: standX, y: groundY - 26, vx: 0, vy: 0 } },
-      cairn: { ...w.cairn, stateFrames: 0 },
+      boss: { ...w.boss, stateFrames: 0 },
     }
     input = advanceInput(input, i < 4 ? frameOf('attack') : 0)
     const step = stepWorld(w, input, balance)

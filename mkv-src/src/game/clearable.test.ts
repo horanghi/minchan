@@ -3,7 +3,8 @@ import { INITIAL_INPUT, advanceInput, frameOf, type Action, type InputState } fr
 import { loadBalance } from '../data/load.ts'
 import { STAGE_1 } from '../data/stages/stage1.ts'
 import { STAGES } from '../data/stages/stages.ts'
-import { CAIRN, coreBox, damageCairn } from '../entities/bosses/cairn.ts'
+import { CAIRN } from '../entities/bosses/cairn.ts'
+import { cairnOps } from '../entities/bosses/cairnSlot.ts'
 import { boxOfEnemy } from '../entities/enemies/enemy.ts'
 import { TILE, tileAt } from '../physics/tilemap.ts'
 import { applyDifficulty, applyDifficultyToStage, DIFFICULTIES, rulesFor } from './difficulty.ts'
@@ -56,7 +57,7 @@ function botReachesBoss(stage: Stage, stageBalance: Balance): boolean {
     const step = stepWorld(world, input, stageBalance)
     world = step.world
     input = step.input
-    if (world.cairn.awake) return true
+    if (world.boss.awake) return true
   }
 
   return false
@@ -134,24 +135,24 @@ describe('스테이지 1 — 클리어 가능성', () => {
 
   it('보스를 코어만 노리면 30발로 잡는다 — 창 데미지 10', () => {
     let world = createWorld(STAGE_1, balance)
-    world = { ...world, cairn: { ...world.cairn, awake: true } }
+    world = { ...world, boss: { ...world.boss, awake: true } }
 
     let shots = 0
-    while (world.cairn.hp > 0 && shots < 100) {
-      const result = damageCairn(world.cairn, 10, coreBox(world.cairn))
-      world = { ...world, cairn: result.cairn }
+    while (world.boss.hp > 0 && shots < 100) {
+      const result = cairnOps.damage(world.boss, 10, cairnOps.coreBox(world.boss))
+      world = { ...world, boss: result.boss }
       shots += 1
     }
-    expect(world.cairn.hp).toBe(0)
+    expect(world.boss.hp).toBe(0)
     expect(shots).toBe(CAIRN.maxHp / 10)
   })
 
   it('보스를 잡으면 클리어 표시가 선다', () => {
     let world = createWorld(STAGE_1, balance)
-    world = { ...world, cairn: { ...world.cairn, awake: true, hp: 5 } }
+    world = { ...world, boss: { ...world.boss, awake: true, hp: 5 } }
 
     // 코어 위치에 투사체를 놓아 맞힌다
-    const core = coreBox(world.cairn)
+    const core = cairnOps.coreBox(world.boss)
     const shot = {
       id: 1, weaponId: 'lance', x: core.x, y: core.y, width: 4, height: 4,
       vx: 0, vy: 0, damage: 10, ageFrames: 0,

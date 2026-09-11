@@ -39,6 +39,7 @@ function arena(enemies: readonly EnemySpawn[], spawnTx = 3): Stage {
     sections: [0],
     // 보스가 깨지 않도록 멀리 둔다. 여기서 보는 것은 잡몹뿐이다.
     bossGateX: 100_000,
+    bossKind: 'cairn',
     enemies,
   }
 }

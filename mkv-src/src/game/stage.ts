@@ -1,4 +1,5 @@
 import { TILE, createTilemap, type TileKind, type Tilemap } from '../physics/tilemap.ts'
+import type { BossKind } from '../entities/bosses/kind.ts'
 import type { EnemyKind } from '../entities/enemies/enemy.ts'
 import type { ChestContents } from '../entities/pickups/chest.ts'
 
@@ -49,6 +50,11 @@ export interface Stage {
   readonly sections: readonly number[]
   /** 보스룸 진입 x (픽셀). 이 지점을 넘으면 보스가 깨어난다. */
   readonly bossGateX: number
+  /**
+   * 보스룸에 서는 것. 등록된 종류만 쓸 수 있다 — 미등록이면 월드가 만들어지지 않는다.
+   * 기본값이 없는 것이 설계다: 기본값이 있으면 조용한 대체가 된다. → entities/bosses/registry.ts
+   */
+  readonly bossKind: BossKind
 }
 
 /**

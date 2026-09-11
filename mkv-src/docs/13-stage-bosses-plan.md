@@ -342,7 +342,7 @@ D에서 “벽”은 위치를 알려 주는 균열 연출이다. 맵의 단단�
 
 이 부분 예시로 기존 전체 파일을 덮어쓰지 않는다. 향후 통합 시 S1과 범위 밖 보스 행은 보존하고 S2~S5 행의 관계를 정리해야 한다. 최상위 `$source`에는 기존 보스 근거인 05와 신규 13을 함께 설명할 수 있는 문자열을 사용한다. 현재 JSON에는 패턴 프레임·페이즈 경계·공격 상자 필드가 없으므로 이를 기존 스키마인 것처럼 추가하지 않는다. 패턴 수치와 경계는 캐른의 `CAIRN` 같은 보스별 코드 상수로 대응시키는 제안이다.
 
-`Stage`의 기존 보스 관련 필드는 `bossGateX`이며 종류 필드는 없다. **`bossKind`는 신규 제안 필드명**으로 JSON `id`와 같은 값을 연결한다. `bosses.json`의 `stage`와 TypeScript `Stage`는 별개 자료다. JSON에 행을 적는 것만으로 `createWorld`의 생성 종류가 바뀌지 않는다.
+`Stage`의 보스 관련 필드는 원래 `bossGateX`뿐이었다. **`bossKind`는 AF-3(선행 티켓)에서 구현됐다** — `src/game/stage.ts`, 종류 → 구현 연결은 `src/entities/bosses/registry.ts`, 렌더러는 `src/render/bossRenderers.ts`. JSON `id`와 같은 값을 쓴다. `bosses.json`의 `stage`와 TypeScript `Stage`는 별개 자료다. JSON에 행을 적는 것만으로 `createWorld`의 생성 종류가 바뀌지 않는다.
 
 캐른 구조를 따른다는 말은 다음과 같은 범위를 뜻한다.
 
@@ -365,6 +365,8 @@ D에서 “벽”은 위치를 알려 주는 균열 연출이다. 맵의 단단�
 이번 작업에서 Jira 티켓을 생성하거나 코드를 수정하지 않는다. 아래는 실행을 위한 분할 제안이다. **선행 티켓 1개가 아래 보스 4개 티켓 모두의 의존성**이다. 합계 5개이며, 각 티켓의 완료 조건은 3개로 제한한다.
 
 ### 선행 티켓 — 스테이지별 보스 슬롯: stage 데이터에 boss 종류 필드 추가 + world 가 종류별로 생성하도록 변경
+
+> **구현됨 (AF-3)**: `Stage.bossKind` · `entities/bosses/{kind,slot,cairnSlot,registry}.ts` · `render/bossRenderers.ts`. 미등록 종류는 `BossNotRegisteredError`. 보스 티켓은 판정 한 줄(`registry.ts`) + 렌더러 한 줄(`bossRenderers.ts`)을 등록하고 `stageN.ts` 의 `bossKind` 를 바꾼다.
 
 등록되지 않은 종류를 조용히 캐른으로 생성하지 않는 슬롯 구조를 먼저 만든다. 선행 작업 중 실제 콘텐츠 연결은 구현된 캐른을 유지하며, 신규 종류의 실제 S2~S5 활성화는 각 보스 티켓이 담당한다. 테스트용 생성 대역으로 분기를 검사하는 것은 제안이며 출시 콘텐츠로 취급하지 않는다.
 

@@ -37,6 +37,7 @@ function arena(enemies: readonly EnemySpawn[]): Stage {
     chests: [],
     sections: [0],
     bossGateX: 100_000,
+    bossKind: 'cairn',
     enemies,
   }
 }
