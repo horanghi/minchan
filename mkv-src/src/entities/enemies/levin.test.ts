@@ -175,6 +175,7 @@ describe('낙뢰 × 월드', () => {
     chests: [],
     sections: [0],
     bossGateX: 10_000,
+    bossKind: 'cairn',
   }
 
   it('기둥이 아래의 플레이어를 때리고, 사인은 levin 으로 기록된다', () => {

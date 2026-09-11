@@ -3,10 +3,9 @@ import { createRng, nextFloat, type RngState } from '../core/rng.ts'
 import type { InputState } from '../core/input.ts'
 import type { Balance } from '../data/load.ts'
 import { requireWeapon } from '../data/load.ts'
-import {
-  awaken, damageCairn, createCairn, fragmentBoxes, slamBox, stepCairn, bodyBox,
-  type Cairn,
-} from '../entities/bosses/cairn.ts'
+import type { BossKind } from '../entities/bosses/kind.ts'
+import { BOSS_REGISTRY, createBoss, opsOf, type BossRegistry } from '../entities/bosses/registry.ts'
+import type { Boss, BossOps } from '../entities/bosses/slot.ts'
 import {
   EMPTY_HAZARDS, boxOfHazard, clearHazards, spawnHazard, stepHazards,
   type HazardKind, type HazardWorld,
@@ -69,7 +68,8 @@ export interface World {
   readonly clip: ClipState
   readonly shots: ProjectileWorld
   readonly enemies: readonly Enemy[]
-  readonly cairn: Cairn
+  /** 보스룸의 주인. 종류는 스테이지가, 구현은 레지스트리가 정한다. */
+  readonly boss: Boss
   /**
    * 적이 내보낸 위험물 — 보스의 묘비·낙석, 화염귀의 불덩이, 포자충의 독 구름.
    * 전부 플레이어를 때리며, 사인은 `HAZARD_CAUSE` 가 발생원으로 되돌린다.
@@ -107,7 +107,7 @@ export interface World {
  * 재시도율이 낮을 때 난이도를 낮추는 것 말고 할 수 있는 게 없다.
  * → prompts/m1-gate.md
  */
-export type DamageCause = EnemyKind | 'cairn' | 'pit' | 'hazard' | 'timeout'
+export type DamageCause = EnemyKind | BossKind | 'pit' | 'hazard' | 'timeout'
 
 /** 이번 틱에 일어난 일. 연출과 소리가 여기에 반응한다. */
 export interface WorldEvents {
@@ -147,8 +147,9 @@ const NO_EVENTS: WorldEvents = Object.freeze({
  * `DamageCause` 는 "무엇에 죽었는지 모름"을 없애려고 있는 것이다.
  * → docs/05 · prompts/m1-gate.md
  */
-const HAZARD_CAUSE: Readonly<Record<HazardKind, DamageCause>> = {
-  gravestone: 'cairn', rock: 'cairn', fireball: 'ember', poison: 'spore',
+const BOSS_HAZARDS: ReadonlySet<HazardKind> = new Set(['gravestone', 'rock'])
+const ENEMY_HAZARD_CAUSE: Readonly<Record<'fireball' | 'poison', DamageCause>> = {
+  fireball: 'ember', poison: 'spore',
 }
 
 /**
@@ -159,12 +160,14 @@ const HAZARD_CAUSE: Readonly<Record<HazardKind, DamageCause>> = {
  */
 const POISON_ARM_FRAMES = 12
 
-function hazardHit(hazards: HazardWorld, playerBox: Aabb): DamageCause | null {
+/** 보스가 내보낸 것은 **그 판의 보스**로 센다 — 종류를 박아 두면 S2 의 낙석 사망이 캐른으로 집계된다. */
+function hazardHit(hazards: HazardWorld, playerBox: Aabb, bossKind: BossKind): DamageCause | null {
   const hit = hazards.hazards.find((h) => {
     if (h.kind === 'poison' && h.ageFrames < POISON_ARM_FRAMES) return false
     return overlaps(boxOfHazard(h), playerBox)
   })
-  return hit ? HAZARD_CAUSE[hit.kind] : null
+  if (hit === undefined) return null
+  return BOSS_HAZARDS.has(hit.kind) ? bossKind : ENEMY_HAZARD_CAUSE[hit.kind as 'fireball' | 'poison']
 }
 
 /**
@@ -175,19 +178,18 @@ function hazardHit(hazards: HazardWorld, playerBox: Aabb): DamageCause | null {
  */
 function causeOfHit(
   enemies: readonly Enemy[],
-  cairn: Cairn,
+  boss: Boss,
+  ops: BossOps,
   hazards: HazardWorld,
   playerBox: Aabb,
   map: Tilemap,
 ): DamageCause | null {
-  const slam = slamBox(cairn)
-  const byCairn = fragmentBoxes(cairn).some((b) => overlaps(b, playerBox))
-    || (slam !== null && overlaps(slam, playerBox))
-    || (cairn.awake && cairn.state !== 'dead' && overlaps(bodyBox(cairn), playerBox))
-  if (byCairn) return 'cairn'
+  const byBoss = ops.hitBoxes(boss).some((b) => overlaps(b, playerBox))
+    || (boss.awake && !ops.isDead(boss) && overlaps(ops.bodyBox(boss), playerBox))
+  if (byBoss) return boss.kind
 
   // 날아온 것은 **던진 쪽**으로 센다. 묘비·낙석은 보스, 불덩이는 화염귀, 독은 포자충.
-  const byHazard = hazardHit(hazards, playerBox)
+  const byHazard = hazardHit(hazards, playerBox, boss.kind)
   if (byHazard !== null) return byHazard
 
   const hit = enemies.find((e) => touches(e, playerBox) && canHurtPlayer(e))
@@ -257,7 +259,9 @@ function hasteScale(enemy: Enemy, ringing: readonly Enemy[]): number {
 /** 사망에서 조작까지 3초 예산. 연출 1.25초 + 여유. → docs/02 2.6 */
 export const RESPAWN_DELAY_TICKS = 90
 
-export function createWorld(stage: Stage, balance: Balance, seed = 20260825): World {
+export function createWorld(
+  stage: Stage, balance: Balance, seed = 20260825, registry: BossRegistry = BOSS_REGISTRY,
+): World {
   const size = stage.map.tileSize
   let rng = createRng(seed)
   let id = 1
@@ -283,7 +287,7 @@ export function createWorld(stage: Stage, balance: Balance, seed = 20260825): Wo
     clip: startClip('idle'),
     shots: EMPTY_WORLD,
     enemies,
-    cairn: createCairn(bossX, (stage.map.height - 1) * size - 52, createRng(seed + 7)),
+    boss: createBoss(stage.bossKind, bossX, (stage.map.height - 1) * size, createRng(seed + 7), registry),
     hazards: EMPTY_HAZARDS,
     chests: stage.chests.map((spawn, i) =>
       createChest(i + 1, spawn.tx, spawn.ty, spawn.contents, size)),
@@ -318,7 +322,9 @@ export interface WorldStep {
  * 순서가 규칙이다. 지형 → 플레이어 → 적 → 투사체 → 판정 → 카메라.
  * 판정을 이동보다 먼저 하면 한 프레임 늦은 위치로 맞는다.
  */
-export function stepWorld(world: World, input: InputState, balance: Balance): WorldStep {
+export function stepWorld(
+  world: World, input: InputState, balance: Balance, registry: BossRegistry = BOSS_REGISTRY,
+): WorldStep {
   const dt = TICK_SECONDS
   let events = { ...NO_EVENTS }
 
@@ -386,10 +392,11 @@ export function stepWorld(world: World, input: InputState, balance: Balance): Wo
   if (grimmTookOff) events = { ...events, grimmTookOff: true }
 
   // --- 보스 -----------------------------------------------------------------
-  let cairn = world.cairn
-  if (!cairn.awake && player.body.x >= world.stage.bossGateX) cairn = awaken(cairn)
-  const bossStep = stepCairn(cairn, { target, groundY: (map.height - 1) * map.tileSize }, dt)
-  cairn = bossStep.cairn
+  const ops = opsOf(world.boss.kind, registry)
+  let boss = world.boss
+  if (!boss.awake && player.body.x >= world.stage.bossGateX) boss = ops.awaken(boss)
+  const bossStep = ops.step(boss, { target, groundY: (map.height - 1) * map.tileSize }, dt)
+  boss = bossStep.boss
   if (bossStep.emission.quake) events = { ...events, quake: true }
 
   // 묘비와 낙석. 이걸 받지 않으면 두 패턴이 예비 동작만 하고 아무 일도 안 한다.
@@ -459,10 +466,10 @@ export function stepWorld(world: World, input: InputState, balance: Balance): Wo
       return result.enemy
     })
 
-    if (!consumed && cairn.awake && cairn.state !== 'dead') {
-      const result = damageCairn(cairn, shot.damage, box)
+    if (!consumed && boss.awake && !ops.isDead(boss)) {
+      const result = ops.damage(boss, shot.damage, box)
       if (result.dealt > 0) {
-        cairn = result.cairn
+        boss = result.boss
         bossHit += result.dealt
         bossKilled = bossKilled || result.killed
         consumed = true
@@ -504,7 +511,7 @@ export function stepWorld(world: World, input: InputState, balance: Balance): Wo
   // --- 피격 -----------------------------------------------------------------
   let vitals = tickVitals(pickedVitals)
   if (!isInvulnerable(vitals)) {
-    const cause = causeOfHit(enemies, cairn, hazards, playerBox, map)
+    const cause = causeOfHit(enemies, boss, ops, hazards, playerBox, map)
 
     if (cause !== null) {
       const result = takeHit(vitals, balance.player)
@@ -554,7 +561,7 @@ export function stepWorld(world: World, input: InputState, balance: Balance): Wo
   return {
     world: {
       ...world,
-      map, crumble, player, vitals, clip, shots, camera, cairn, hazards, chests,
+      map, crumble, player, vitals, clip, shots, camera, boss, hazards, chests,
       weaponId, rng, nextEnemyId,
       enemies: pruneEnemies(enemies, map),
       respawnTicks: vitals.dead ? RESPAWN_DELAY_TICKS : 0,

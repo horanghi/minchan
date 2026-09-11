@@ -1,6 +1,6 @@
 import { Container, Graphics, Sprite, type Texture } from 'pixi.js'
 import {
-  bodyBox, coreBox, isCoreExposed, isWindingUp, slamBox, type Cairn,
+  bodyBox, isWindingUp, slamBox, type Cairn,
 } from '../entities/bosses/cairn.ts'
 import {
   CAIRN_OFFSETS, PAL_CAIRN, cairnFrame, cairnPose, fragmentFrame,
@@ -78,14 +78,7 @@ export class CairnRenderer {
   }
 
   /** 코어의 화면 위치. 발광 스프라이트를 여기에 맞춘다. */
-  static coreCenter(cairn: Cairn): { readonly x: number; readonly y: number } {
-    const core = coreBox(cairn)
-    return { x: core.x + core.width / 2, y: core.y + core.height / 2 }
-  }
 
-  static coreBrightness(cairn: Cairn): number {
-    return isCoreExposed(cairn) ? 0.95 : 0.7
-  }
 
   private textureFor(key: string, build: () => Matrix, flash: boolean): Texture {
     const cached = this.cache.get(key)

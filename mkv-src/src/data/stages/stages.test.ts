@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { BOSS_REGISTRY } from '../../entities/bosses/registry.ts'
 import { sectionAt, type Stage } from '../../game/stage.ts'
 import { TILE, tileAt, type TileKind } from '../../physics/tilemap.ts'
 import { STAGES, indexOfStage, nextStage, stageNumber } from './stages.ts'
@@ -195,3 +196,15 @@ describe.each(STAGES.map((stage) => [stage.name, stage] as const))(
     })
   },
 )
+
+describe('보스 종류 — 데이터에 산다 (AF-3)', () => {
+  it('다섯 판 전부 등록된 종류를 말한다 — 없는 것을 있는 척 적지 않는다', () => {
+    for (const stage of STAGES) {
+      expect(Object.keys(BOSS_REGISTRY)).toContain(stage.bossKind)
+    }
+  })
+
+  it('지금은 전부 캐른이다 — S2~S5 는 보스 티켓이 바꾼다', () => {
+    expect(STAGES.map((s) => s.bossKind)).toEqual(['cairn', 'cairn', 'cairn', 'cairn', 'cairn'])
+  })
+})

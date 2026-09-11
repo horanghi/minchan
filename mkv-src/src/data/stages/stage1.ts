@@ -174,6 +174,8 @@ export const STAGE_1: Stage = {
   ],
 
   bossGateX: (SECTION_START.boss + 6) * 16,
+
+  bossKind: 'cairn',
 }
 
 export const STAGE_1_HEIGHT = H

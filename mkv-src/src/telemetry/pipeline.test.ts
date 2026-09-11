@@ -75,7 +75,7 @@ function play(frames: number, retryAfterMs: number, ticksPerFrame = 1): Played {
       dead: world.vitals.dead,
       playerX: world.player.body.x,
       cleared: world.cleared,
-      bossAwake: world.cairn.awake,
+      bossAwake: world.boss.awake,
       pressed,
       respawned: folded.respawned,
       died: folded.died,

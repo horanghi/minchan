@@ -11,8 +11,9 @@ import { STAGE_5 } from './stage5.ts'
  * 배열 순서가 곧 진행 순서다. 스테이지 안에 "다음"을 적어 두지 않는다 —
  * 그러면 순서를 바꿀 때 두 곳을 고쳐야 하고, 한 곳만 고친 채로 배포된다.
  *
- * 보스는 다섯 판 모두 캐른이다. 스테이지마다 다른 보스는 docs/04 의 계획이고
- * 아직 구현이 하나뿐이다 — 없는 것을 있는 척 적어 두지 않는다.
+ * 보스 종류는 각 스테이지의 `bossKind` 가 말한다. 지금은 다섯 판 모두 캐른이다 —
+ * 구현이 하나뿐이고, 없는 것을 있는 척 적어 두지 않는다. S2~S5 는 보스 티켓이
+ * 레지스트리에 등록하면서 바꾼다. → entities/bosses/registry.ts · docs/13
  */
 export const STAGES: readonly Stage[] = [STAGE_1, STAGE_2, STAGE_3, STAGE_4, STAGE_5]
 

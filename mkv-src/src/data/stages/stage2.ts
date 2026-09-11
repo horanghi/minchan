@@ -147,4 +147,6 @@ export const STAGE_2: Stage = {
   sections: [SECTION_START.a, SECTION_START.b, SECTION_START.boss],
 
   bossGateX: (SECTION_START.boss + 6) * 16,
+
+  bossKind: 'cairn',
 }

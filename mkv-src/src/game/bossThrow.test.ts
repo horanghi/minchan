@@ -25,14 +25,14 @@ describe('묘비 — 사이에 서면 안 맞는다', () => {
   /** 그 거리에 못 박고 투척 패턴을 끝까지 돌린다. 스치기라도 하면 참. */
   function grazedAt(gapPx: number): boolean {
     const base = createWorld(STAGE_1, balance)
-    const bossX = base.cairn.x
+    const bossX = base.boss.x
     const groundY = (base.map.height - 1) * 16
     const standX = bossX - gapPx
 
     let w: World = {
       ...base,
       enemies: [],
-      cairn: { ...base.cairn, awake: true, state: 'throw', stateFrames: 0, facing: -1 },
+      boss: { ...base.boss, awake: true, state: 'throw', stateFrames: 0, facing: -1 },
     }
 
     for (let i = 0; i < 200; i += 1) {
@@ -40,7 +40,7 @@ describe('묘비 — 사이에 서면 안 맞는다', () => {
         ...w,
         player: { ...w.player, body: { ...w.player.body, x: standX, y: groundY - 26, vx: 0, vy: 0 } },
         vitals: { ...w.vitals, iFrames: 0, dead: false, armor: 'steel' },
-        cairn: w.cairn.state === 'idle' ? { ...w.cairn, stateFrames: 0 } : w.cairn,
+        boss: w.boss.state === 'idle' ? { ...w.boss, stateFrames: 0 } : w.boss,
       }
       const step = stepWorld(w, INITIAL_INPUT, balance)
       w = step.world

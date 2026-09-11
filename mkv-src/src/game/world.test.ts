@@ -51,7 +51,7 @@ describe('월드 생성', () => {
   })
 
   it('보스는 자고 있다', () => {
-    expect(fresh().cairn.awake).toBe(false)
+    expect(fresh().boss.awake).toBe(false)
   })
 
   it('카메라가 플레이어에 붙어 시작한다 — 보간하지 않는다', () => {
@@ -216,26 +216,26 @@ describe('보스', () => {
       ...w,
       player: { ...w.player, body: { ...w.player.body, x: STAGE_1.bossGateX + 4 } },
     }
-    expect(stepWorld(atGate, INITIAL_INPUT, balance).world.cairn.awake).toBe(true)
+    expect(stepWorld(atGate, INITIAL_INPUT, balance).world.boss.awake).toBe(true)
   })
 
   it('깨어나기 전에는 맞지 않는다', () => {
     const w = fresh()
-    expect(w.cairn.hp).toBe(CAIRN.maxHp)
+    expect(w.boss.hp).toBe(CAIRN.maxHp)
   })
 
   it('보스를 잡으면 클리어다', () => {
     const w = fresh()
     const nearlyDead: World = {
       ...w,
-      cairn: { ...w.cairn, awake: true, hp: 1 },
+      boss: { ...w.boss, awake: true, hp: 1 },
     }
     // 코어를 직접 때린다
     const hit = stepWorld({
       ...nearlyDead,
-      cairn: { ...nearlyDead.cairn, hp: 1 },
+      boss: { ...nearlyDead.boss, hp: 1 },
     }, INITIAL_INPUT, balance)
-    expect(hit.world.cairn.hp).toBeLessThanOrEqual(1)
+    expect(hit.world.boss.hp).toBeLessThanOrEqual(1)
   })
 })
 
@@ -312,14 +312,14 @@ describe('사인 기록', () => {
   it('보스와 잡몹에 동시에 닿으면 보스로 센다', () => {
     // 보스룸 사망이 잡몹 사망으로 새면 "어디서 죽는가"를 잘못 읽는다.
     const w = walking()
-    const cairn = { ...w.cairn, awake: true }
+    const cairn = { ...w.boss, awake: true }
     const ghoul = w.enemies.find((e) => e.kind === 'ghoul')
     if (ghoul === undefined) throw new Error('스테이지 1 에 좀비가 없다')
 
     const spot = { x: cairn.x + 10, y: cairn.y + 10 }
     const both: World = {
       ...w,
-      cairn,
+      boss: cairn,
       player: { ...w.player, body: { ...w.player.body, ...spot } },
       enemies: w.enemies.map((e) => (e.id === ghoul.id ? { ...e, body: { ...e.body, ...spot } } : e)),
     }

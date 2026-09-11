@@ -15,7 +15,8 @@ import { loadBalance } from './data/load.ts'
 import { FIRST_STAGE, STAGES, nextStage, stageNumber } from './data/stages/stages.ts'
 import { frameFor } from './entities/player/animation.ts'
 import { emitsLight, isBlinking, isInvulnerable, pickUpRelic, spriteStateOf, takeHit } from './entities/player/vitals.ts'
-import { bodyBox, coreBox, isCoreExposed } from './entities/bosses/cairn.ts'
+import type { BossKind } from './entities/bosses/kind.ts'
+import { opsOf } from './entities/bosses/registry.ts'
 import { boxOfHazard, type HazardKind } from './entities/bosses/hazard.ts'
 import { boxOfChest, boxOfItem } from './entities/pickups/chest.ts'
 import { boxOfEnemy } from './entities/enemies/enemy.ts'
@@ -48,7 +49,7 @@ import { DebugOverlay, type DebugMetrics } from './render/debug/overlay.ts'
 import { BloomLayer } from './render/postfx/bloomLayer.ts'
 import { LightLayer } from './render/postfx/lightLayer.ts'
 import { ScreenFilter } from './render/postfx/screenFilter.ts'
-import { CairnRenderer } from './render/cairnRenderer.ts'
+import { createBossRenderer, type BossRenderer } from './render/bossRenderers.ts'
 import { EnemyRenderer } from './render/enemyRenderer.ts'
 import { ParallaxRenderer } from './render/parallax.ts'
 import { S1_PALETTE } from './scenery/stage1.ts'
@@ -287,7 +288,21 @@ const hazardGfx = new Graphics()
 const chestGfx = new Graphics()
 stageRoot.addChild(chestGfx, bossGfx, hazardGfx)
 const enemyRenderer = new EnemyRenderer(stageRoot)
-const cairnRenderer = new CairnRenderer(stageRoot)
+// 보스 층. addChild 순서가 곧 깊이라, 렌더러를 나중에 만들어도 여기(플레이어 아래)에 그려진다.
+const bossLayer = new Container()
+stageRoot.addChild(bossLayer)
+// 보스 렌더러는 종류별로 하나씩, 처음 필요할 때 만든다. 미등록 종류는 여기서도 실패한다.
+// 화면은 전역 레지스트리(BOSS_REGISTRY)를 보므로, 월드를 다른 레지스트리로 만들었다면 판정과 그림이 갈라진다 — 테스트 밖에서는 그럴 일이 없다.
+const bossRenderers = new Map<BossKind, BossRenderer>()
+function bossRendererFor(kind: BossKind): BossRenderer {
+  const cached = bossRenderers.get(kind)
+  if (cached !== undefined) return cached
+  const made = createBossRenderer(kind, bossLayer)
+  bossRenderers.set(kind, made)
+  return made
+}
+// 부팅에서 다섯 판의 보스 종류를 전부 확인한다 — S3 만 빠뜨렸다면 S1·S2 를 깬 뒤에 알게 되는 것이 최악이다.
+for (const s of STAGES) opsOf(s.bossKind)
 stageRoot.addChild(enemyGfx)
 
 const sheet = new SpriteSheet()
@@ -554,7 +569,7 @@ app.ticker.add(() => {
     if (result.events.pickedUp === 'weapon') sfx.play('throw')
 
     // 보스 등장 — 0.3초 무음. 소리가 사라지면 사람은 화면을 본다.
-    if (!bossSeen && world.cairn.awake) {
+    if (!bossSeen && world.boss.awake) {
       bossSeen = true
       // 0.3초 무음 뒤 보스 테마로 넘어간다. 소리가 사라지면 사람은 화면을 본다.
       music = toBossTheme(silence(music))
@@ -649,13 +664,14 @@ app.ticker.add(() => {
   // 시계는 월드가 든다 — 시간 초과로 죽이는 쪽과 화면에 그리는 쪽이 갈리면
   // 00:00 인데 안 죽거나 그 반대가 된다.
   const secondsLeft = balance.player.stageTimeLimitSeconds - world.elapsedTicks / 60
-  const busy = world.enemies.length > 0 || world.cairn.awake || isInvulnerable(world.vitals)
+  const busy = world.enemies.length > 0 || world.boss.awake || isInvulnerable(world.vitals)
   hud = stepHud(hud, {
     vitals: world.vitals,
     weaponId: world.weaponId,
     secondsLeft,
     score: run.score,
-    bossHp: world.cairn.awake && world.cairn.state !== 'dead' ? world.cairn.hp / 300 : null,
+    bossHp: world.boss.awake && !opsOf(world.boss.kind).isDead(world.boss)
+      ? world.boss.hp / opsOf(world.boss.kind).maxHp : null,
     busy,
   }, frameMs)
   hudRenderer.draw(hud, now)
@@ -705,7 +721,7 @@ app.ticker.add(() => {
     dead: world.vitals.dead,
     playerX: world.player.body.x,
     cleared: world.cleared,
-    bossAwake: world.cairn.awake,
+    bossAwake: world.boss.awake,
     pressed: polled !== 0,
     respawned: frameTally.respawned,
     died: frameTally.died,
@@ -759,20 +775,21 @@ function drawEnemies(): void {
 }
 
 function drawBoss(): void {
-  cairnRenderer.draw(world.cairn, loop.tick)
+  bossRendererFor(world.boss.kind).draw(world.boss, loop.tick)
   drawHazards()
 
-  // 히트박스는 디버그에서만. 파편 4개는 각각 판정 단위라 눈으로 확인할 수 있어야 한다.
+  // 히트박스는 디버그에서만. 맞는 상자(파편·강타)는 각각 판정 단위라 눈으로 확인할 수 있어야 한다.
   const g = bossGfx.clear()
-  if (!showDebugBoxes || !world.cairn.awake) return
-  const body = bodyBox(world.cairn)
+  if (!showDebugBoxes || !world.boss.awake) return
+  const ops = opsOf(world.boss.kind)
+  const body = ops.bodyBox(world.boss)
   g.rect(Math.round(body.x), Math.round(body.y), body.width, body.height)
     .stroke({ width: 1, color: 0x8695ac })
-  const core = coreBox(world.cairn)
+  const core = ops.coreBox(world.boss)
   g.rect(Math.round(core.x), Math.round(core.y), core.width, core.height)
     .stroke({ width: 1, color: 0xc9a6e8 })
-  for (const fragment of world.cairn.fragments) {
-    g.rect(Math.round(fragment.x), Math.round(fragment.y), 14, 14)
+  for (const box of ops.hitBoxes(world.boss)) {
+    g.rect(Math.round(box.x), Math.round(box.y), box.width, box.height)
       .stroke({ width: 1, color: 0xe23e4e })
   }
 }
@@ -846,12 +863,14 @@ function drawLighting(features: ReturnType<typeof featuresFor>, now: number): vo
       flicker: { amplitude: 0.06, hz: 2.5 },
     })
   }
-  // 캐른의 가슴 코어는 **항상** 빛난다. 약점이 곧 조명이므로,
+  // 보스의 코어는 **항상** 빛난다 (캐른은 가슴). 약점이 곧 조명이므로,
   // 어두운 보스룸에서 플레이어는 빛을 따라가면 약점을 찾는다.
   // 분해 중에는 몸통이 사라져 더 밝게 드러난다.
-  if (world.cairn.awake && world.cairn.state !== 'dead') {
-    const core = coreBox(world.cairn)
-    const exposed = isCoreExposed(world.cairn)
+  const bossOpsForLight = opsOf(world.boss.kind)
+  if (world.boss.awake && !bossOpsForLight.isDead(world.boss)) {
+    const bossOps = bossOpsForLight
+    const core = bossOps.coreBox(world.boss)
+    const exposed = bossOps.isCoreExposed(world.boss)
     lights.push({
       x: core.x + 5 - world.camera.x, y: core.y + 5 - world.camera.y,
       radius: exposed ? 110 : 76,
@@ -879,14 +898,16 @@ function drawLighting(features: ReturnType<typeof featuresFor>, now: number): vo
     relicGlow.tint = world.vitals.relic ? RELIC_LIGHT[world.vitals.relic].color : 0xffffff
     relicGlow.alpha = 0.55
   }
-  coreGlow.visible = world.cairn.awake && world.cairn.state !== 'dead'
+  const glowOps = opsOf(world.boss.kind)
+  coreGlow.visible = world.boss.awake && !glowOps.isDead(world.boss)
   if (coreGlow.visible) {
-    const core = coreBox(world.cairn)
+    const bossOps = glowOps
+    const core = bossOps.coreBox(world.boss)
     coreGlow.position.set(core.x + core.width / 2, core.y + core.height / 2)
     coreGlow.width = core.width + 6
     coreGlow.height = core.height + 6
     coreGlow.tint = 0xc9a6e8
-    coreGlow.alpha = isCoreExposed(world.cairn) ? 0.95 : 0.7
+    coreGlow.alpha = bossOps.isCoreExposed(world.boss) ? 0.95 : 0.7
   }
 
   bloomLayer.setEnabled(features.bloom)
@@ -894,7 +915,7 @@ function drawLighting(features: ReturnType<typeof featuresFor>, now: number): vo
 }
 
 function metricsOf(frameMs: number): DebugMetrics {
-  const cairn = world.cairn
+  const boss = world.boss
   return {
     fps, frameMs, logicMs,
     tick: loop.tick, ticksPerSecond, droppedTicks,
@@ -902,7 +923,7 @@ function metricsOf(frameMs: number): DebugMetrics {
     entities: world.enemies.length + world.shots.projectiles.length + 1,
     state: `${world.clip.name} · ${spriteStateOf(world.vitals)}`
       + `${isInvulnerable(world.vitals) ? ` inv${world.vitals.iFrames}` : ''} x${world.vitals.lives}`
-      + `${cairn.awake ? ` · 캐른 ${cairn.hp} p${cairn.phase} ${cairn.state}` : ''}`
+      + `${boss.awake ? ` · ${boss.kind} ${boss.hp} p${boss.phase} ${boss.state}` : ''}`
       + ` · ${quality.tier}${quality.manual ? '*' : ''}`,
     velocity: [world.player.body.vx, world.player.body.vy],
     coyoteFrames: world.player.timers.coyoteFrames,
