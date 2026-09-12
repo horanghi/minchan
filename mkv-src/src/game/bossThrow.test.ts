@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { asCairnBoss } from '../entities/bosses/slot.ts'
 import { INITIAL_INPUT } from '../core/input.ts'
 import { loadBalance } from '../data/load.ts'
 import { STAGE_1 } from '../data/stages/stage1.ts'
@@ -32,7 +33,7 @@ describe('묘비 — 사이에 서면 안 맞는다', () => {
     let w: World = {
       ...base,
       enemies: [],
-      boss: { ...base.boss, awake: true, state: 'throw', stateFrames: 0, facing: -1 },
+      boss: { ...asCairnBoss(base.boss), awake: true, state: 'throw', stateFrames: 0, facing: -1 },
     }
 
     for (let i = 0; i < 200; i += 1) {
@@ -40,7 +41,7 @@ describe('묘비 — 사이에 서면 안 맞는다', () => {
         ...w,
         player: { ...w.player, body: { ...w.player.body, x: standX, y: groundY - 26, vx: 0, vy: 0 } },
         vitals: { ...w.vitals, iFrames: 0, dead: false, armor: 'steel' },
-        boss: w.boss.state === 'idle' ? { ...w.boss, stateFrames: 0 } : w.boss,
+        boss: w.boss.state === 'idle' ? { ...asCairnBoss(w.boss), stateFrames: 0 } : w.boss,
       }
       const step = stepWorld(w, INITIAL_INPUT, balance)
       w = step.world

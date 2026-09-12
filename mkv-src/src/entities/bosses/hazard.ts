@@ -173,3 +173,22 @@ export function stepHazards(
 export function clearHazards(world: HazardWorld): HazardWorld {
   return world.hazards.length === 0 ? world : { ...world, hazards: [] }
 }
+
+/** 보스가 내보내는 종류. 보스가 죽으면 이것들도 같이 멎어야 한다. */
+export const BOSS_HAZARD_KINDS: readonly HazardKind[] = ['gravestone', 'rock']
+
+/**
+ * 보스가 내보낸 것만 치운다.
+ *
+ * 보스가 죽었는데 날아가던 묘비·불씨가 계속 때리면, "사망 즉시 모든 공격 판정을 끈다"가
+ * 거짓이 된다 (docs/13 §S2 격파 연출). 잡몹의 불덩이·독은 주인이 아직 살아 있으니 남긴다.
+ */
+export function clearBossHazards(world: HazardWorld): HazardWorld {
+  const kept = world.hazards.filter((h) => !BOSS_HAZARD_KINDS.includes(h.kind))
+  return kept.length === world.hazards.length ? world : { ...world, hazards: kept }
+}
+
+/** 보스가 지금 내보내 둔 것의 수. 방출형 패턴이 종료 대기에 쓴다. */
+export function countBossHazards(world: HazardWorld): number {
+  return world.hazards.filter((h) => BOSS_HAZARD_KINDS.includes(h.kind)).length
+}

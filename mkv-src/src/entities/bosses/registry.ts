@@ -1,4 +1,5 @@
 import type { RngState } from '../../core/rng.ts'
+import { ashmantOps } from './ashmantSlot.ts'
 import { cairnOps } from './cairnSlot.ts'
 import type { BossKind } from './kind.ts'
 import type { Boss, BossOps } from './slot.ts'
@@ -12,7 +13,7 @@ import type { Boss, BossOps } from './slot.ts'
  */
 export type BossRegistry = Partial<Record<BossKind, BossOps>>
 
-export const BOSS_REGISTRY: BossRegistry = Object.freeze({ cairn: cairnOps })
+export const BOSS_REGISTRY: BossRegistry = Object.freeze({ cairn: cairnOps, ashmant: ashmantOps })
 
 export class BossNotRegisteredError extends Error {
   constructor(kind: string) {

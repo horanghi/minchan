@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { asCairnBoss } from '../entities/bosses/slot.ts'
 import { INITIAL_INPUT, advanceInput, frameOf, type Action, type InputState } from '../core/input.ts'
 import { loadBalance } from '../data/load.ts'
 import { STAGE_1 } from '../data/stages/stage1.ts'
@@ -135,11 +136,11 @@ describe('스테이지 1 — 클리어 가능성', () => {
 
   it('보스를 코어만 노리면 30발로 잡는다 — 창 데미지 10', () => {
     let world = createWorld(STAGE_1, balance)
-    world = { ...world, boss: { ...world.boss, awake: true } }
+    world = { ...world, boss: { ...asCairnBoss(world.boss), awake: true } }
 
     let shots = 0
     while (world.boss.hp > 0 && shots < 100) {
-      const result = cairnOps.damage(world.boss, 10, cairnOps.coreBox(world.boss))
+      const result = cairnOps.damage(asCairnBoss(world.boss), 10, cairnOps.coreBox(asCairnBoss(world.boss)))
       world = { ...world, boss: result.boss }
       shots += 1
     }
@@ -149,10 +150,10 @@ describe('스테이지 1 — 클리어 가능성', () => {
 
   it('보스를 잡으면 클리어 표시가 선다', () => {
     let world = createWorld(STAGE_1, balance)
-    world = { ...world, boss: { ...world.boss, awake: true, hp: 5 } }
+    world = { ...world, boss: { ...asCairnBoss(world.boss), awake: true, hp: 5 } }
 
     // 코어 위치에 투사체를 놓아 맞힌다
-    const core = cairnOps.coreBox(world.boss)
+    const core = cairnOps.coreBox(asCairnBoss(world.boss))
     const shot = {
       id: 1, weaponId: 'lance', x: core.x, y: core.y, width: 4, height: 4,
       vx: 0, vy: 0, damage: 10, ageFrames: 0,

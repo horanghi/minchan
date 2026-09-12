@@ -68,7 +68,7 @@ const SECTION_B: readonly string[] = [
 ]
 
 /**
- * 보스룸 — 캐른.
+ * 보스룸 — 애쉬맨트 (AF-4). 종류는 아래 `bossKind` 가 말한다.
  *
  * 넓고 평평하다. 패턴을 읽는 것이 전부이므로 지형이 방해하면 안 된다.
  * **오른쪽만 막는다** — 양쪽을 막으면 들어갈 수도 없다.
@@ -148,5 +148,5 @@ export const STAGE_2: Stage = {
 
   bossGateX: (SECTION_START.boss + 6) * 16,
 
-  bossKind: 'cairn',
+  bossKind: 'ashmant',
 }
