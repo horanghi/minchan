@@ -7,7 +7,7 @@ import type { BossKind } from '../entities/bosses/kind.ts'
 import { BOSS_REGISTRY, createBoss, opsOf, type BossRegistry } from '../entities/bosses/registry.ts'
 import type { Boss, BossOps } from '../entities/bosses/slot.ts'
 import {
-  EMPTY_HAZARDS, boxOfHazard, clearHazards, spawnHazard, stepHazards,
+  EMPTY_HAZARDS, MAX_HAZARDS, clearBossHazards, countBossHazards, boxOfHazard, clearHazards, spawnHazard, stepHazards,
   type HazardKind, type HazardWorld,
 } from '../entities/bosses/hazard.ts'
 import {
@@ -395,7 +395,12 @@ export function stepWorld(
   const ops = opsOf(world.boss.kind, registry)
   let boss = world.boss
   if (!boss.awake && player.body.x >= world.stage.bossGateX) boss = ops.awaken(boss)
-  const bossStep = ops.step(boss, { target, groundY: (map.height - 1) * map.tileSize }, dt)
+  const bossStep = ops.step(boss, {
+    target,
+    groundY: (map.height - 1) * map.tileSize,
+    hazardRoom: MAX_HAZARDS - world.hazards.hazards.length,
+    ownedHazards: countBossHazards(world.hazards),
+  }, dt)
   boss = bossStep.boss
   if (bossStep.emission.quake) events = { ...events, quake: true }
 
@@ -488,6 +493,8 @@ export function stepWorld(
     if (!consumed) survivors.push(shot)
   }
   shots = { ...shots, projectiles: survivors }
+  // 보스가 죽으면 그가 내보낸 것도 멎는다 — 날아가던 묘비가 시체를 대신해 때리지 않게.
+  if (bossKilled) hazards = clearBossHazards(hazards)
   events = { ...events, enemiesKilled: killed, bossHit, bossKilled, chestOpened }
 
   // --- 줍기 -----------------------------------------------------------------

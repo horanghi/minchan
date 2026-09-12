@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { asCairnBoss } from '../entities/bosses/slot.ts'
 import { INITIAL_INPUT, advanceInput, frameOf } from '../core/input.ts'
 import { loadBalance } from '../data/load.ts'
 import { STAGE_1 } from '../data/stages/stage1.ts'
@@ -29,7 +30,7 @@ function hitAt(pattern: 'slam' | 'throw' | 'quake', gapPx: number): boolean {
     // 스테이지 잡몹을 치운다. 재는 것은 **보스 패턴이 닿는가** 이지
     // 근처 좀비가 걸어오는가가 아니다.
     enemies: [],
-    boss: { ...base.boss, awake: true, state: pattern, stateFrames: 0, facing: -1 },
+    boss: { ...asCairnBoss(base.boss), awake: true, state: pattern, stateFrames: 0, facing: -1 },
   }
 
   for (let i = 0; i < 240; i += 1) {
@@ -40,7 +41,7 @@ function hitAt(pattern: 'slam' | 'throw' | 'quake', gapPx: number): boolean {
       vitals: { ...w.vitals, iFrames: 0, dead: false, armor: 'steel' },
       // 패턴이 끝나면 대기에 못 박는다. 안 그러면 보스가 다음 공격을 골라
       // 이 함수가 "그 패턴이 닿았는가" 를 재지 못한다.
-      boss: w.boss.state === 'idle' ? { ...w.boss, stateFrames: 0 } : w.boss,
+      boss: w.boss.state === 'idle' ? { ...asCairnBoss(w.boss), stateFrames: 0 } : w.boss,
     }
     const step = stepWorld(w, INITIAL_INPUT, balance)
     w = step.world
@@ -59,7 +60,7 @@ function spearReaches(gapPx: number): boolean {
   let w: World = {
     ...base,
     enemies: [],
-    boss: { ...base.boss, awake: true, state: 'idle', stateFrames: 0, facing: -1 },
+    boss: { ...asCairnBoss(base.boss), awake: true, state: 'idle', stateFrames: 0, facing: -1 },
     player: {
       ...base.player,
       facing: 1,
@@ -71,7 +72,7 @@ function spearReaches(gapPx: number): boolean {
     w = {
       ...w,
       player: { ...w.player, facing: 1, body: { ...w.player.body, x: standX, y: groundY - 26, vx: 0, vy: 0 } },
-      boss: { ...w.boss, stateFrames: 0 },
+      boss: { ...asCairnBoss(w.boss), stateFrames: 0 },
     }
     input = advanceInput(input, i < 4 ? frameOf('attack') : 0)
     const step = stepWorld(w, input, balance)

@@ -45,7 +45,7 @@ function arena(bossKind: Stage['bossKind'], bossGateX = 8 * 16): Stage {
 
 /** 캐른 구조에 다른 태그를 붙인 대역 — 증명하는 것은 "키로 분기한다"뿐이다 (registry.test 의 설명 참조). */
 const CAIRN_AS_ANY = cairnOps as unknown as BossOps
-function fakeOps(kind: 'ashmant', patch: Partial<BossOps> = {}): BossOps {
+function fakeOps(kind: 'silvain', patch: Partial<BossOps> = {}): BossOps {
   const retag = (boss: Boss): Boss => ({ ...boss, kind } as unknown as Boss)
   return {
     ...CAIRN_AS_ANY,
@@ -91,13 +91,13 @@ describe('보스 슬롯 — 월드 배선', () => {
   })
 
   it('스테이지의 종류로 만든다 — 대역 종류를 등록하면 캐른이 아닌 것이 선다', () => {
-    const registry: BossRegistry = { cairn: cairnOps, ashmant: fakeOps('ashmant') }
-    expect(createWorld(arena('ashmant'), balance, 1, registry).boss.kind).toBe('ashmant')
+    const registry: BossRegistry = { cairn: cairnOps, silvain: fakeOps('silvain') }
+    expect(createWorld(arena('silvain'), balance, 1, registry).boss.kind).toBe('silvain')
     expect(createWorld(arena('cairn'), balance, 1, registry).boss.kind).toBe('cairn')
   })
 
   it('미등록 종류의 스테이지는 월드를 만들 수 없다 — 조용한 대체 없음', () => {
-    expect(() => createWorld(arena('silvain'), balance)).toThrow(/silvain/)
+    expect(() => createWorld(arena('vesca'), balance)).toThrow(/vesca/)
   })
 
   it('게이트를 넘으면 슬롯이 보스를 깨운다', () => {
@@ -132,14 +132,14 @@ describe('보스 슬롯 — 월드 배선', () => {
     // 대역 보스가 매 틱 플레이어 머리 위에 낙석을 떨어뜨린다. 몸통은 멀리 두어 접촉을 막는다.
     const registry: BossRegistry = {
       cairn: cairnOps,
-      ashmant: fakeOps('ashmant', {
+      silvain: fakeOps('silvain', {
         step: (boss, ctx) => ({
           boss,
           emission: { gravestones: [], rocks: [{ x: ctx.target.x - 4, y: ctx.target.y - 40 }], ghouls: [], quake: false },
         }),
       }),
     }
-    const r = run(arena('ashmant', 0), 60 * 4, () => [], registry)
-    expect(firstCause(r.events)).toBe('ashmant')
+    const r = run(arena('silvain', 0), 60 * 4, () => [], registry)
+    expect(firstCause(r.events)).toBe('silvain')
   })
 })

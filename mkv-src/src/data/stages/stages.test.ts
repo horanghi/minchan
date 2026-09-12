@@ -204,7 +204,7 @@ describe('보스 종류 — 데이터에 산다 (AF-3)', () => {
     }
   })
 
-  it('지금은 전부 캐른이다 — S2~S5 는 보스 티켓이 바꾼다', () => {
-    expect(STAGES.map((s) => s.bossKind)).toEqual(['cairn', 'cairn', 'cairn', 'cairn', 'cairn'])
+  it('S1 캐른 · S2 애쉬맨트 — S3~S5 는 남은 보스 티켓이 바꾼다', () => {
+    expect(STAGES.map((s) => s.bossKind)).toEqual(['cairn', 'ashmant', 'cairn', 'cairn', 'cairn'])
   })
 })
