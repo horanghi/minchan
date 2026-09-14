@@ -29,6 +29,8 @@ function run(
   start: World,
   ticks: number,
   keys: (tick: number) => readonly Action[] = () => [],
+  /** 매 틱의 월드를 본다. 최종 상태만으로는 "떨어지던 중" 을 증명할 수 없어서 필요하다. */
+  observe: (world: World, tick: number) => void = () => {},
 ): { world: World; events: readonly WorldEvents[] } {
   let world = start
   let input: InputState = INITIAL_INPUT
@@ -39,8 +41,13 @@ function run(
     world = step.world
     input = step.input
     events.push(step.events)
+    observe(world, i)
   }
   return { world, events }
+}
+
+function rocksOf(world: World): readonly { readonly y: number }[] {
+  return world.hazards.hazards.filter((h) => h.kind === 'rock')
 }
 
 /** 보스를 깨우고 그 앞에 플레이어를 세운 월드. 잡몹은 치운다. */
@@ -109,8 +116,20 @@ describe('S3 배선', () => {
     // docs/13 §S3 가 명시적으로 요구한 검사다.
     const spec = SILVAIN.patterns.icicle
     const w = arena({ state: 'icicle', stateFrames: spec.windupFrames - 1 }, 120)
-    const r = run(w, 60 * 4)
-    expect(r.world.hazards.hazards.length + r.events.filter((e) => e.hurt).length).toBeGreaterThan(0)
+    const groundY = (w.map.height - 1) * SIZE
+    let spawnY = Number.POSITIVE_INFINITY
+    let deepestY = Number.NEGATIVE_INFINITY
+    const r = run(w, 60 * 4, () => [], (world) => {
+      for (const rock of rocksOf(world)) {
+        spawnY = Math.min(spawnY, rock.y)
+        deepestY = Math.max(deepestY, rock.y)
+      }
+    })
+    // 고드름이 생겼는가 — 천장에 막혀 생성 자체가 없으면 아래 낙하 검사가 공허 통과한다.
+    expect(Number.isFinite(spawnY)).toBe(true)
+    // 생긴 자리에 머무르지 않고 플레이어가 서 있는 높이까지 실제로 내려왔는가.
+    expect(deepestY).toBeGreaterThan(spawnY + 40)
+    expect(deepestY).toBeGreaterThanOrEqual(groundY - 26)
     expect(firstCause(r.events)).toBe('silvain')
   })
 
@@ -143,10 +162,16 @@ describe('S3 배선', () => {
   it('죽으면 판정이 사라지고 떨어지던 고드름도 멎는다', () => {
     const spec = SILVAIN.patterns.icicle
     const dying = arena({ state: 'icicle', stateFrames: spec.windupFrames - 1, hp: 1 }, 90)
-    const r = run(dying, 60 * 3, (t) => (t % 6 < 3 ? ['attack'] : []))
-    expect(opsOf('silvain').isDead(r.world.boss)).toBe(true)
-    expect(opsOf('silvain').hitBoxes(r.world.boss)).toEqual([])
-    expect(r.world.hazards.hazards.filter((h) => h.kind === 'rock')).toEqual([])
+    const ops = opsOf('silvain')
+    let ticksWithRocksAlive = 0
+    const r = run(dying, 60 * 3, (t) => (t % 6 < 3 ? ['attack'] : []), (world) => {
+      if (!ops.isDead(world.boss) && rocksOf(world).length > 0) ticksWithRocksAlive += 1
+    })
+    expect(ops.isDead(r.world.boss)).toBe(true)
+    // 살아 있는 동안 떨어지던 고드름이 없었다면 빈 배열 단정은 아무것도 증명하지 않는다.
+    expect(ticksWithRocksAlive).toBeGreaterThan(0)
+    expect(ops.hitBoxes(r.world.boss)).toEqual([])
+    expect(rocksOf(r.world)).toEqual([])
   })
 
   it('보스룸 동시 적 수가 5 를 넘지 않는다 — 소환 0 이므로 보스 하나뿐이다', () => {

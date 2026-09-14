@@ -169,17 +169,25 @@ describe('D 바닥 실쓸기 — 뛰어야 넘는다', () => {
     expect(overlaps(band, { x, y: GROUND_Y - 16, width: 12, height: 16 })).toBe(true)
   })
 
-  it('B 와 D 의 판정이 동시에 존재하지 않는다 — 웅크림과 점프를 동시에 요구하지 않는다', () => {
-    // 순환 전체를 돌려 두 띠가 같은 틱에 있는 경우가 없음을 본다.
+  it('B 와 D 의 판정 틱은 서로 겹치지 않는다 — 웅크림과 점프를 동시에 요구하지 않는다', () => {
+    // 상태가 단일 값이라 "같은 틱에 두 상태" 는 구조상 불가능하다. 그래서 구조가 아니라
+    // 시간 분리를 본다: 판정이 살아 있던 틱 번호를 각각 모아 교집합이 비는지 확인한다.
+    const highTicks = new Set<number>()
+    const lowTicks = new Set<number>()
     let b = boss({ state: 'idle', beatTicks: SILVAIN.beatFrames - 1, phase: 2, hp: SILVAIN.phase2Hp })
     for (let i = 0; i < SILVAIN.beatFrames * 8; i += 1) {
       b = stepSilvain(b, CTX, 1 / 60).boss
-      const both = b.state === 'highSilk' && attackBoxesOf(b).length > 0
-        && (b.state as SilvainState) === 'lowSilk'
-      expect(both).toBe(false)
-      // 한 틱에 활성 상자는 최대 3개(C 고드름은 위험물이라 여기 없다).
+      const active = attackBoxesOf(b).length > 0
+      if (active && b.state === 'highSilk') highTicks.add(i)
+      if (active && b.state === 'lowSilk') lowTicks.add(i)
+      // 한 틱에 활성 상자는 1개다(C 고드름은 위험물이라 여기 없다).
       expect(attackBoxesOf(b).length).toBeLessThanOrEqual(1)
     }
+    // 두 집합이 비어 있으면 교집합도 비어서 공허 통과한다. 먼저 둘 다 실제로 발생했음을 못박는다.
+    expect(highTicks.size).toBeGreaterThan(0)
+    expect(lowTicks.size).toBeGreaterThan(0)
+    const overlap = [...highTicks].filter((t) => lowTicks.has(t))
+    expect(overlap).toEqual([])
   })
 })
 
@@ -269,7 +277,8 @@ describe('E 다리 접기 — 좌우 순차 2타', () => {
       b = stepSilvain(b, CTX, 1 / 60).boss
       if (isSilvainWindingUp(b)) windupTicks += 1
     }
-    expect(windupTicks).toBeGreaterThanOrEqual(spec.windupFrames * 2 - 2)
+    // 48f 예고 × 2타 = 96 이지만 틱 0(진입 직전)은 관측하지 않으므로 95 다.
+    expect(windupTicks).toBe(spec.windupFrames * 2 - 1)
   })
 })
 
