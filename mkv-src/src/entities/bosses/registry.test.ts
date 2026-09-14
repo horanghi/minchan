@@ -43,22 +43,22 @@ describe('종류 목록', () => {
 })
 
 describe('레지스트리', () => {
-  it('등록된 것만 있다 — S1 캐른, S2 애쉬맨트 (AF-4)', () => {
-    expect(Object.keys(BOSS_REGISTRY)).toEqual(['cairn', 'ashmant'])
+  it('등록된 것만 있다 — S1 캐른, S2 애쉬맨트, S3 실베인 (AF-5)', () => {
+    expect(Object.keys(BOSS_REGISTRY)).toEqual(['cairn', 'ashmant', 'silvain'])
     expect(opsOf('cairn')).toBe(cairnOps)
     expect(opsOf('ashmant').maxHp).toBe(360)
   })
 
   it('미등록 종류는 명시적으로 실패한다 — 캐른으로 대체되지 않는다', () => {
-    expect(() => opsOf('silvain')).toThrow(BossNotRegisteredError)
-    expect(() => createBoss('vesca', 100, 80, createRng(3))).toThrow(/vesca/)
+    expect(() => opsOf('vesca')).toThrow(BossNotRegisteredError)
+    expect(() => createBoss('knockreed', 100, 80, createRng(3))).toThrow(/knockreed/)
   })
 
   it('등록된 종류로 만들면 그 종류가 나온다 — 대역으로 분기를 확인한다', () => {
-    const registry: BossRegistry = { cairn: cairnOps, silvain: fakeOps('silvain') }
+    const registry: BossRegistry = { cairn: cairnOps, vesca: fakeOps('vesca') }
     expect(createBoss('cairn', 100, 80, createRng(3), registry).kind).toBe('cairn')
-    expect(createBoss('silvain', 100, 80, createRng(3), registry).kind).toBe('silvain')
-    expect(opsOf('silvain', registry).maxHp).toBe(999)
+    expect(createBoss('vesca', 100, 80, createRng(3), registry).kind).toBe('vesca')
+    expect(opsOf('vesca', registry).maxHp).toBe(999)
   })
 
   it('등록된 종류는 bosses.json 에 행이 있고 hp 가 ops.maxHp 와 같다 — 표와 코드가 갈라지지 않게', () => {

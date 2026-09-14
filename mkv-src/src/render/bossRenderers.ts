@@ -3,6 +3,7 @@ import type { BossKind } from '../entities/bosses/kind.ts'
 import { BossNotRegisteredError } from '../entities/bosses/registry.ts'
 import type { Boss } from '../entities/bosses/slot.ts'
 import { AshmantRenderer } from './ashmantRenderer.ts'
+import { SilvainRenderer } from './silvainRenderer.ts'
 import { CairnRenderer } from './cairnRenderer.ts'
 
 /**
@@ -21,6 +22,7 @@ type RendererFor<K extends BossKind> = {
 const FACTORIES: { [K in BossKind]?: (stage: Container) => RendererFor<K> } = Object.freeze({
   cairn: (stage: Container) => new CairnRenderer(stage),
   ashmant: (stage: Container) => new AshmantRenderer(stage),
+  silvain: (stage: Container) => new SilvainRenderer(stage),
 })
 
 /** 렌더러가 있는 종류. 판정 레지스트리와 같아야 한다 — 어긋나면 보스룸 첫 프레임에 터진다. */
