@@ -2,6 +2,7 @@ import type { RngState } from '../../core/rng.ts'
 import type { Aabb } from '../../physics/aabb.ts'
 import type { Ashmant } from './ashmant.ts'
 import type { Cairn } from './cairn.ts'
+import type { Silvain } from './silvain.ts'
 import type { BossKind } from './kind.ts'
 
 /**
@@ -22,8 +23,11 @@ export type CairnBoss = Cairn & { readonly kind: 'cairn' }
 /** 애쉬맨트(S2). */
 export type AshmantBoss = Ashmant & { readonly kind: 'ashmant' }
 
+/** 실베인 상태에 종류 태그를 붙인 것. */
+export type SilvainBoss = Silvain & { readonly kind: 'silvain' }
+
 /** 등록된 종류의 상태 합집합. 보스 티켓이 멤버를 추가한다. */
-export type Boss = CairnBoss | AshmantBoss
+export type Boss = CairnBoss | AshmantBoss | SilvainBoss
 
 /**
  * 이번 틱에 내보낼 것들. 키의 의미는 캐른 때와 같다 — 신규 보스는 `ghouls` 를 비운다.
@@ -99,5 +103,11 @@ export function asCairnBoss(boss: Boss): CairnBoss {
 /** 애쉬맨트여야 하는 자리에서 애쉬맨트임을 확인한다. */
 export function asAshmantBoss(boss: Boss): AshmantBoss {
   if (boss.kind !== 'ashmant') throw new Error(`애쉬맨트가 아니다: ${boss.kind}`)
+  return boss
+}
+
+/** 실베인이어야 하는 자리에서 실베인임을 확인한다. */
+export function asSilvainBoss(boss: Boss): SilvainBoss {
+  if (boss.kind !== 'silvain') throw new Error(`실베인이 아니다: ${boss.kind}`)
   return boss
 }

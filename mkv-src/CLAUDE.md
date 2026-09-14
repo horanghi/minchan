@@ -62,8 +62,5 @@
 
 ## 모델 사용 가이드
 
-- 설계·복잡한 문제 해결 → **fable**
-- 구현·단순 작업 → **opus / sonnet**
-- 지정된 모델이라도 복잡도에 따라 opus 4.8 또는 fable로 승격
-
-> 상세: `~/.claude/rules/common/model-selection.md`
+> 모델 선택은 `~/.claude/rules/common/model-selection.md` (단일 진실 원천, 항상 자동 로드됨) 를 따른다.
+> 규칙을 이 문서에 복제하지 말 것 — 복제본은 낡는다.
