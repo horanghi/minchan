@@ -60,6 +60,9 @@
   .card:nth-child(6) { animation-delay:.50s; }
   .card:nth-child(7) { animation-delay:.60s; }
   .card:nth-child(8) { animation-delay:.70s; }
+  .card:nth-child(9) { animation-delay:.80s; }
+  .card:nth-child(10) { animation-delay:.90s; }
+  .card:nth-child(11) { animation-delay:1.0s; }
   @keyframes cardIn { from{opacity:0; transform:translateY(24px);} to{opacity:1; transform:none;} }
   .card:hover, .card:active {
     transform:translateY(-6px) scale(1.02);
@@ -99,6 +102,14 @@
 <script>
 // 최근에 올린 게임이 맨 위 — 새 게임은 이 목록 맨 앞에 추가하세요
 const GAMES = [
+  {
+    href: 'minchan_8/index.html',
+    icon: '⚽',
+    title: '슈퍼 풋볼',
+    desc: '무명 신인에서 세계 최고까지 스토리 20장. 5인제 3D 축구로 선수를 뽑고 이적시장에서 사 모아 팀을 키운다. 필살기 한 방이 경기를 뒤집는다.',
+    tags: ['3D', '축구', '스토리 20장', '모바일 OK'],
+    accent: '#1e6bff', accentDark: '#0f3fa8', glow: 'rgba(30,107,255,.35)',
+  },
   {
     href: 'minchan_7/index.html',
     icon: '🔺',
