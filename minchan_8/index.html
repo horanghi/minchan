@@ -258,7 +258,9 @@ const rname=()=>String.fromCharCode(65+((rnd()*26)|0))+'. '+pick(SUR);
 const PACKS={normal:['일반 선수팩',30000,[60,28,9,2.5,0.45,0.05],2],premium:['프리미엄 선수팩',150000,[30,40,20,7,2.5,0.5],2],legend:['레전드 선수팩',500000,[0,20,45,25,8,2],3],event:['이벤트 선수팩',300000,[20,35,25,13,5,2],3]};
 const TIERS=['BRONZE','SILVER','GOLD','PLATINUM','DIAMOND','MASTER','CHAMPION'];
 const NAT=[['BRA',90],['ARG',91],['FRA',91],['ENG',88],['ESP',89],['GER',87],['POR',87],['NED',86],['ITA',85],['BEL',84],['CRO',83],['URU',83],['COL',81],['MEX',80],['USA',79],['JPN',80],['KOR',79],['MAR',81],['SEN',79],['SUI',80],['DEN',80],['POL',77],['SRB',77],['AUS',76],['IRN',76],['ECU',77],['NGA',77],['EGY',76],['GHA',75],['CAN',76],['KSA',73],['QAT',71]];
-let S={coins:3000000,roster:[],lineup:[],rp:0,snd:true,diff:1,len:180,wc:null,market:[],uid:1};
+// 사운드는 기본 off. 아이가 조용한 데서 열어도 갑자기 소리가 나지 않게 한다 —
+// 켜고 싶으면 설정에서 한 번 누르면 되고, 그 선택은 저장된다.
+let S={coins:3000000,roster:[],lineup:[],rp:0,snd:false,diff:1,len:180,wc:null,market:[],uid:1};
 function newCard(g,pos,ovr,name,sk){
   pos=pos||(function(){const r=rnd();return r<0.15?'GK':r<0.45?'CB':r<0.7?'CM':'ST';})();
   return {id:S.uid++,name:name||rname(),pos:pos,g:g,ovr:ovr||(GO[g][0]+((rnd()*(GO[g][1]-GO[g][0]+1))|0)),sk:sk!==undefined?sk:(g>=2&&pos!=='GK'?pick(pos==='CB'?['phantom','time']:Object.keys(SK)):'')};
