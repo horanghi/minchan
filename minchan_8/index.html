@@ -197,9 +197,13 @@ h3{font-size:14px;margin:16px 0 8px;color:#ffe14d}
 <div class="scr" id="s-wc"><div class="bar"><button class="back" data-a="go" data-v="menu">◀</button><b>WORLD CUP</b><span class="coin"></span></div><div id="wcBody"></div></div>
 <div class="scr" id="s-online"><div class="bar"><button class="back" data-a="onlineBack">◀</button><b>ONLINE MATCH</b><span class="coin"></span></div>
   <div id="onMain"><h3 id="rk"></h3><p class="note" id="onMsg"></p>
-  <div class="modes"><button data-a="online" data-v="1v1">1 VS 1</button><button data-a="online" data-v="friend">친구 대전</button><button data-a="online" data-v="rank">랭크 대전</button><button data-a="online" data-v="friendly">친선 경기</button></div>
-  <p class="note">서버 미연결 초기 버전: 매칭 상대는 AI입니다. 랭크 점수는 이 기기에만 저장됩니다.</p></div>
-  <div id="srch"><div class="radar"></div><h3 id="srT">SEARCHING FOR OPPONENT<span class="dots"><span>.</span><span>.</span><span>.</span></span></h3><p class="note" id="srS"></p><br><button class="btn b2" data-a="cancelSearch">취소</button></div></div>
+  <div class="modes"><button data-a="mkRoom">방 만들기</button><button data-a="joinAsk">코드로 참가</button></div>
+  <p class="note">친구와 둘이 합니다. 방을 만들면 4글자 코드가 나오고, 친구가 그 코드로 들어옵니다.
+  방을 만든 쪽이 파랑(왼쪽 성)·들어온 쪽이 빨강입니다.</p>
+  <h3 style="margin-top:14px">열려 있는 방</h3>
+  <div id="rooms"><p class="note">찾는 중…</p></div>
+  <p class="note">목록이 비어도 코드를 받아 적으면 들어갈 수 있습니다.</p></div>
+  <div id="srch"><div class="radar"></div><h3 id="srT">상대를 기다리는 중<span class="dots"><span>.</span><span>.</span><span>.</span></span></h3><p class="note" id="srS"></p><br><button class="btn b2" data-a="cancelSearch">취소</button></div></div>
 <div class="scr" id="s-story"><div class="bar"><button class="back" data-a="go" data-v="menu">◀</button><b>STORY MODE</b><span class="coin"></span></div><div id="stBody"></div></div>
 <div class="scr" id="s-settings"><div class="bar"><button class="back" data-a="go" data-v="menu">◀</button><b>SETTINGS</b></div>
   <div class="set">사운드<button class="btn" id="oSnd" data-a="setSnd"></button></div>
@@ -477,19 +481,26 @@ function makePlayer(team,i){
 }
 for(let t=0;t<2;t++)for(let i=0;i<5;i++)players.push(makePlayer(t,i));
 function drawNum(p,light){const c=p.cv.getContext('2d');c.clearRect(0,0,64,64);c.fillStyle=light?'#10233a':'#fff';c.textAlign='center';c.font='bold 11px Arial';c.fillText(p.nm.split(' ').pop().slice(0,8),32,13);c.font='bold 42px Arial';c.fillText(p.num,32,54);p.tex.needsUpdate=true;}
-function applyTheme(p,name){
+/**
+ * 테마를 입힌다.
+ *
+ * keepKit 이면 **상의 색은 건드리지 않는다.** 온라인에서 둘이 같은 테마를
+ * 고르면 상의까지 같아져 어느 쪽이 내 편인지 알 수 없게 된다 — 뿔이나 후광은
+ * 멀리서 보이지만, 멀리서 가장 먼저 읽히는 건 결국 상의 색이다.
+ */
+function applyTheme(p,name,keepKit){
   const t=THEMES[name]||THEMES.none;p.theme=THEMES[name]?name:'none';
   for(const k in p.th)p.th[k].forEach(m=>{m.visible=false;});
   if(t.parts)t.parts.forEach(k=>{(p.th[k]||[]).forEach(m=>{m.visible=true;});});
   if(t.skin)p.skm.color.setHex(t.skin);
   if(t.hair)p.hm.color.setHex(t.hair);
   if(t.bald)p.hairs.forEach(m=>{m.visible=false;});
-  if(t.kit){p.kit.color.setHex(t.kit);drawNum(p,lum(t.kit)>0.7);}
+  if(t.kit&&!keepKit){p.kit.color.setHex(t.kit);drawNum(p,lum(t.kit)>0.7);}
   if(t.sh)p.sh.color.setHex(t.sh);
 }
-function applyTeam(t,cards,kit,theme){
+function applyTeam(t,cards,kit,theme,keepKit){
   kit=kit||(t===0?[0x1e6bff,0xffffff,0xffd23f]:[0xff3b3b,0x1a1a2a,0x2ee6a6]);
-  cards.forEach(function(c,i){const p=players[t*5+i];p.num=LNUM[i];applyCard(p,c,kit);applyTheme(p,theme||'none');});
+  cards.forEach(function(c,i){const p=players[t*5+i];p.num=LNUM[i];applyCard(p,c,kit);applyTheme(p,theme||'none',keepKit);});
 }
 function applyCard(p,c,kit){{const f=clamp((c.ovr-60)/40,0,1),h=hsh(c.name+c.pos),B=(n,m)=>(h>>>n)%m;
     p.name=c.pos+' '+c.name;p.nm=c.name;p.gr=c.g;p.spd=0.94+0.2*f;p.sht=0.9+0.3*f;p.def=0.85+0.4*f;p.ctl=0.35+0.6*f;p.gkA=f;p.sk=c.sk||'';p.off=false;p.g.visible=true;
@@ -577,22 +588,64 @@ function kickoff(team){recC=0;['cel','skip','rp','lineup'].forEach(i=>{$(i).styl
   ball.p.set(0,BR,0);ball.v.set(0,0,0);ball.owner=fw2;clearFx();
   setCtrl(team===0?fw2:mainP());state='ready';readyT=1;sfx.whistle();
 }
+/**
+ * 두 팀 상의 색이 비슷하면 떼어 놓는다.
+ *
+ * 테마가 상의 색을 덮을 수 있어서, 둘이 비슷한 걸 고르면 경기 중에 누가
+ * 내 편인지 알 수 없게 된다. **멀리서 가장 먼저 읽히는 건 상의 색이다** —
+ * 뿔이나 후광보다 먼저다. 그래서 여기서만큼은 테마보다 구분을 앞세운다.
+ *
+ * 떼어 놓을 때는 상대를 흰색/남색 중 내 색에서 더 먼 쪽으로 보낸다.
+ */
+const _hsl={};
+const hueOf=c=>new THREE.Color(c).getHSL(_hsl)&&{h:_hsl.h,s:_hsl.s,l:_hsl.l};
+/**
+ * 멀리서 같은 색으로 보이는가.
+ *
+ * RGB 거리만으로는 모자라다 — 진홍(#6e0f1c)과 빨강(#ff3b3b)은 수치상 꽤
+ * 떨어져 있지만 경기 카메라에서는 둘 다 그냥 "붉은 것"이다. 그래서 **색상(hue)이
+ * 비슷하면 밝기가 달라도 같은 색으로 친다.**
+ */
+function sameLook(a,b){
+  if(cdist(a,b)<0.75) return true;
+  const A=hueOf(a),B=hueOf(b);
+  let dh=Math.abs(A.h-B.h); if(dh>0.5) dh=1-dh;      // 0..0.5 (0.11 ≈ 40도)
+  return dh<0.11 && A.s>0.25 && B.s>0.25;
+}
+function splitKits(){
+  const a=players[4].kit.color.getHex();
+  if(!sameLook(a, players[9].kit.color.getHex())) return;
+  // 내 색에서 가장 먼 대비색으로 상대를 보낸다
+  const alt=[0xf2f2f2,0x18203a,0xffd23f,0x12a87a,0x1e6bff];
+  let best=alt[0],bd=-1;
+  alt.forEach(x=>{ if(sameLook(a,x)) return; const d=cdist(a,x); if(d>bd){bd=d;best=x;} });
+  const light=lum(best)>0.7;
+  for(let i=5;i<10;i++){const p=players[i];if(p.gk)continue;p.kit.color.setHex(best);drawNum(p,light);}
+}
 function startMatch(c){
   if(!c.kitSet&&!c.train){showKit(c);return;}
   cfg=c;initAudio();const kc=kitCols(c);
-  applyTeam(0,c.my||lineupCards(),kc[0],S.theme);applyTeam(1,c.opp||genTeam(70),kc[1],c.oppTheme);
+  const mine=S.theme||'none';
+  let foe=c.oppTheme||'none';
+  if(!c.net&&foe!=='none'&&foe===mine)foe='none';   // 오프라인: 같은 외형이 마주 보지 않게
+  applyTeam(0,c.my||lineupCards(),kc[0],mine,!!c.net);
+  applyTeam(1,c.opp||genTeam(70),kc[1],foe,!!c.net);
+  splitKits();
   if(c.train)for(let i=6;i<10;i++){players[i].off=true;players[i].g.visible=false;}
   act=players.filter(p=>!p.off);
   $('tb').textContent=c.names[0].slice(0,9);$('tr').textContent=c.names[1].slice(0,9);
-  score=c.start?c.start.slice():[0,0];time=c.half?S.len/2:S.len;st={pt:0,po:0,tk:0};tier2.visible=!!c.big&&S.gfx>0;$('mis').textContent=c.mis?'🎯 '+MIS[c.mis]:'';phase=0;gauge=0;gaugeA=0;pen=null;paused=false;lastRes=null;
+  score=c.start?c.start.slice():[0,0];time=c.half?S.len/2:(c.len||S.len);st={pt:0,po:0,tk:0};tier2.visible=!!c.big&&S.gfx>0;$('mis').textContent=c.mis?'🎯 '+MIS[c.mis]:'';phase=0;gauge=0;gaugeA=0;pen=null;paused=false;lastRes=null;
   document.querySelectorAll('.scr').forEach(e=>e.style.display='none');
   body.classList.add('ingame');ball.mesh.visible=true;
+  if(c.net&&net.host){ctrlB=players[9];ctrlB.ring.visible=false;}
   hud();kickoff(0);if(c.big)startIntro();else banner(c.train?'TRAINING':'KICK OFF',c.names[0]+' vs '+c.names[1],1.2);if(c.pens)startPens();
 }
-function leaveMatch(){tutHide();['cel','skip','rp','lineup','kit'].forEach(i=>{$(i).style.display='none';});tier2.visible=false;fw.visible=false;players.forEach(p=>{p.cel='';p.moodT=0;p.off=false;p.g.visible=true;});act=players;body.classList.remove('ingame');body.classList.remove('cere');state='menu';pen=null;clearFx();paused=false;$('pbox').style.display='none';$('banner').classList.remove('on');ctrl.ring.visible=false;}
+function leaveMatch(){ctrlB=null;chargingB=false;tutHide();['cel','skip','rp','lineup','kit'].forEach(i=>{$(i).style.display='none';});tier2.visible=false;fw.visible=false;players.forEach(p=>{p.cel='';p.moodT=0;p.off=false;p.g.visible=true;});act=players;body.classList.remove('ingame');body.classList.remove('cere');state='menu';pen=null;clearFx();paused=false;$('pbox').style.display='none';$('banner').classList.remove('on');ctrl.ring.visible=false;}
 
 /* ================= ACTIONS ================= */
-function give(p){if(ball.pas===0&&p.team===0)st.po++;ball.pas=-1;ball.type='';ball.owner=p;p.hold=0;p.tph=0;ball.power=false;ball.fx='';ball.curve=0;ball.last=p;if(p.team===0)setCtrl(p);}
+function give(p){if(ball.pas===0&&p.team===0)st.po++;ball.pas=-1;ball.type='';ball.owner=p;p.hold=0;p.tph=0;ball.power=false;ball.fx='';ball.curve=0;ball.last=p;
+  if(p.team===0)setCtrl(p);
+  else if(net.on&&net.host&&!p.gk)ctrlB=p;}
 function foot(p){return (-(ball.p.x-p.x)*Math.sin(p.face)+(ball.p.z-p.z)*Math.cos(p.face))>=0?1:0;}
 function kick(p,vx,vy,vz,pw){ball.pas=-1;p.kickT=0.28;p.kl=ball.p.y>1.3?-1:foot(p);ball.owner=null;ball.p.y=Math.max(ball.p.y,BR+0.05);ball.v.set(vx,vy,vz);p.kickCd=0.4;ball.last=p;sfx.kick(pw||0);}
 function shoot(p,ch,aimZ){
@@ -635,6 +688,7 @@ function trick(p){
   banner('<span style="font-size:.4em">'+n+'</span>','',0.7);sfx.kick(0.2);addG(p.team,4);
 }
 function skillAct(){
+  if(net.on&&!net.host&&net.ready){netQ('sk');return;}
   if(state!=='play'||cine>0||ball.owner!==ctrl)return;if(!ctrl.sk||gauge<100){trick(ctrl);return;}
   gauge=0;startSkill(ctrl,ctrl.sk);
 }
@@ -666,17 +720,21 @@ function tackle(p){
   }
 }
 function switchPlayer(){
+  if(net.on&&!net.host&&net.ready){netQ('sw');return;}
   let best=null,bd=1e9;
   act.forEach(p=>{if(p.team!==0||p.gk||p===ctrl)return;const d=Math.hypot(p.x-ball.p.x,p.z-ball.p.z);if(d<bd){bd=d;best=p;}});
   if(best)setCtrl(best);
 }
-function tackleAct(){if(state==='play'&&ball.owner!==ctrl&&ctrl.tackCd<=0&&ctrl.stun<=0)tackle(ctrl);}
+function tackleAct(){if(net.on&&!net.host&&net.ready){netQ('tk');return;}
+  if(state==='play'&&ball.owner!==ctrl&&ctrl.tackCd<=0&&ctrl.stun<=0)tackle(ctrl);}
 function shootDown(){
+  if(net.on&&!net.host&&net.ready){netQ('sd');if(ball.owner===ctrl){charging=true;charge=0;}return;}
   if(state==='pen'){if(pen.turn===0&&!pen.shot&&!pen.res){charging=true;charge=0;}return;}
   if(state!=='play'||cine>0)return;
   if(ball.owner===ctrl){charging=true;charge=0;}else if(!ball.owner&&ball.p.y>0.5&&ball.p.y<2.6&&ctrl.kickCd<=0&&Math.hypot(ball.p.x-ctrl.x,ball.p.z-ctrl.z)<1.9)shoot(ctrl,0.75,inp.z*3.4);else tackleAct();
 }
 function shootUp(){
+  if(net.on&&!net.host&&net.ready){if(charging){charging=false;$('gauge').classList.remove('on');}netQ('su');return;}
   if(!charging)return;charging=false;$('gauge').classList.remove('on');
   if(state==='pen'&&pen.turn===0&&!pen.shot){
     const aim=inp.z*3.5+(rnd()-0.5)*0.5;shoot(players[4],Math.max(0.3,charge),aim);pen.shot=true;pen.t=0;
@@ -686,6 +744,8 @@ function shootUp(){
 }
 function passAct(){
   if(state!=='play'||cine>0)return;
+  if(net.on&&!net.host&&net.ready){netQ('ps');return;}
+
   if(ball.owner===ctrl){let dx=inp.x,dz=inp.z;if(Math.hypot(dx,dz)<0.2){dx=Math.cos(ctrl.face);dz=Math.sin(ctrl.face);}
     const m=bestMate(ctrl,dx,dz);if(m)passTo(ctrl,m);}
   else switchPlayer();
@@ -811,9 +871,22 @@ function updatePlayer(p,dt,frozen){
     else if(c==='join'&&scorer){const ex=scorer.x-p.x,ez=scorer.z-p.z,d=Math.hypot(ex,ez);if(d>1.7){dx=ex/d;dz=ez/d;}}
     else if(c==='dance')p.face+=dt*7;}}
   else if(p.stun>0)p.stun-=dt;
+  else if(net.on&&!net.host){
+    // 게스트는 계산하지 않는다. 받은 좌표를 좇아갈 뿐이고, 다리·기울기 같은
+    // 나머지 연출은 아래 공용 코드가 그대로 돌려 준다.
+    if(p.nx!==undefined){
+      const ex=p.nx-p.x,ez=p.nz-p.z,d=Math.hypot(ex,ez);
+      if(d>0.03){dx=ex/d;dz=ez/d;sp=Math.min(sp*1.6,d/Math.max(dt,0.001));}
+      if(p.nface!==undefined){let da=p.nface-p.face;while(da>Math.PI)da-=2*Math.PI;while(da<-Math.PI)da+=2*Math.PI;p.face+=da*Math.min(1,dt*14);}
+    }
+    p.stam=Math.min(1,p.stam+dt*0.12);
+  }
   else if(p===ctrl){
     dx=inp.x;dz=inp.z;   // 아날로그: 살짝 밀면 걷기, 끝까지 밀면 달리기
     if(inp.sprint&&p.stam>0.03&&inp.mag>0.85){sp*=1.45;p.stam=Math.max(0,p.stam-dt*0.22);}else p.stam=Math.min(1,p.stam+dt*0.12);
+  }else if(p===ctrlB){
+    dx=net.rin.x;dz=net.rin.z;const mg=Math.hypot(dx,dz);
+    if(net.rin.sprint&&p.stam>0.03&&mg>0.85){sp*=1.45;p.stam=Math.max(0,p.stam-dt*0.22);}else p.stam=Math.min(1,p.stam+dt*0.12);
   }else{
     const t=ai(p,dt),ex=t.x-p.x,ez=t.z-p.z,d=Math.hypot(ex,ez);
     if(d>0.25){dx=ex/d;dz=ez/d;if(d<1){dx*=d;dz*=d;}}sp*=t.s;
@@ -1116,7 +1189,8 @@ function updateCamera(dt){
   else if(state==='pen'){const d=pen.turn===0?1:-1;if(d>0){tx=HL-18;ty=4.2;tz=0;lx=HL;ly=1;lz=0;}else{tx=-HL-7;ty=4.5;tz=0;lx=-HL+10;ly=0.5;lz=0;}k=4;}
   else if(state==='goal'){if(goalT>GOALT-0.9||!scorer){tx=goalSide*(HL-9);ty=4.5;tz=ball.p.z+7;lx=ball.p.x;ly=1;lz=ball.p.z;k=2.5;}else{const c=scorer;tx=c.x-goalSide*4.2;ty=2.2;tz=c.z+2.6;lx=c.x;ly=1.5;lz=c.z;k=4;}}
   else if(cine>0&&cineP){const d=cineP.team===0?1:-1;tx=cineP.x-d*5.5;ty=2.8;tz=cineP.z+3;lx=cineP.x+d*2;ly=1.2;lz=cineP.z;k=9;}
-  else{const fx=ctrl.x*0.6+ball.p.x*0.4,fz=ctrl.z*0.6+ball.p.z*0.4;tx=fx-(portrait?21:17);ty=portrait?18:13;tz=fz*0.75;lx=fx+5;lz=fz*0.9;}
+  else{const cs=(net.on&&!net.host)?-1:1,fx=ctrl.x*0.6+ball.p.x*0.4,fz=ctrl.z*0.6+ball.p.z*0.4;
+    tx=fx-cs*(portrait?21:17);ty=portrait?18:13;tz=fz*0.75;lx=fx+cs*5;lz=fz*0.9;}
   if(camCut){k=1;camCut=false;}else k=Math.min(1,dt*k);
   camPos.x+=(tx-camPos.x)*k;camPos.y+=(ty-camPos.y)*k;camPos.z+=(tz-camPos.z)*k;
   camLook.x+=(lx-camLook.x)*k;camLook.y+=(ly-camLook.y)*k;camLook.z+=(lz-camLook.z)*k;
@@ -1131,6 +1205,7 @@ function frame(now){
   requestAnimationFrame(frame);
   const rdt=Math.min(0.033,(now-lastT)/1000);lastT=now;
   if(paused||rdt<=0){renderer.render(scene,camera);return;}
+  if(net.on&&!net.host&&net.ready&&body.classList.contains('ingame')){netGuestFrame(rdt);return;}
   slow=state==='goal'?(goalT>GOALT-0.9?0.25:1):(cine>0?0.15:1);
   const dt=rdt*slow;T+=dt;if(crowdTex&&S.gfx>0)crowdTex.offset.y=Math.sin(T*7)*(state==='goal'||state==='cere'||state==='intro'?0.03:0.008);
   readInput();
@@ -1141,6 +1216,7 @@ function frame(now){
     if(cine>0){cine-=rdt;if(cine<=0){cine=0;if(pend){const q=pend;pend=null;if(ball.owner===q.p)specialShot(q.p,q.k);}}}
     if(tb){tb.t-=dt;if(tb.t<=0){tb=null;$('tint').style.display='none';}}
     gauge=Math.min(100,gauge+dt*(cfg.train?30:2.5));if(!cfg.train)gaugeA=Math.min(100,gaugeA+dt*(cfg.boss||cfg.rival?8:2.5));
+    if(chargingB){if(ball.owner!==ctrlB)chargingB=false;else chargeB=Math.min(1,chargeB+rdt/0.9);}
     if(charging){if(ball.owner!==ctrl){charging=false;$('gauge').classList.remove('on');}
       else{charge=Math.min(1,charge+rdt/0.9);$('gauge').classList.add('on');$('gf').style.width=(charge*100)+'%';}}
     calcChasers();act.forEach(p=>updatePlayer(p,pd(p),false));collide();updateBall(dt);pickup();
@@ -1164,22 +1240,207 @@ function frame(now){
     trophy.position.set(-2.3,2.7+players[2].g.position.y,0);trophy.rotation.y+=rdt*2;
   }else{act.forEach(p=>updatePlayer(p,dt,true));if(state!=='menu'||ball.mesh.visible)updateBall(dt);}
   $('st').style.width=(ctrl.stam*100)+'%';
+  if(net.on&&net.host&&net.ready){net.snapT-=rdt;if(net.snapT<=0){net.snapT=SNAP_MS/1000;netSendSnap();}}
   updateCamera(rdt);renderer.render(scene,camera);
   if(curScr==='team'&&state==='menu'){
     if(!pvR){pvR=new THREE.WebGLRenderer({canvas:$('pvC'),antialias:true,alpha:true});pvR.setPixelRatio(Math.min(window.devicePixelRatio||1,2));pvR.setSize(170,220,false);}
     pv.face+=rdt*0.9;updatePlayer(pv,rdt,true);pvR.render(pvScene,pvCam);}
 }
 
-/* ================= NET (서버 연결 시 이 객체만 교체) ================= */
-const Net={
-  // 현재: 로컬 AI 어댑터. 실제 서버 연결 시 findMatch/report를 WebSocket/HTTP 구현으로 교체
-  findMatch:function(mode,rp,ovr){return new Promise(function(res){
-    setTimeout(function(){const tier=Math.min(6,Math.floor(rp/100));
-      res({name:pick(['Striker','Goal','Kick','Neo','Dark','Ace','Pro'])+pick(['King','Master','Boy','Fox','Wolf','99','_KR'])+((rnd()*90+10)|0),
-        ovr:mode==='rank'?66+tier*4+((rnd()*4)|0):ovr-2+((rnd()*5)|0)});},2200+rnd()*1600);});},
-  report:function(mode,result){return Promise.resolve({ok:true});}
+/* ================= 온라인 2인 중계 =================
+ *
+ * **호스트가 경기를 계산한다.** 방을 먼저 연 쪽이 자기 화면에서 평소처럼
+ * 시뮬을 돌리고, 그 결과를 스냅샷으로 보낸다. 참가자는 계산하지 않고
+ * 받은 좌표를 좇아 그리며 자기 조작만 올린다.
+ *
+ * 서버가 계산하면 가장 공정하지만 공 물리와 선수 열 명을 워커로 옮겨야 한다.
+ * 친구끼리 코드 주고받고 하는 판에 그만한 값을 치를 이유가 없다 —
+ * 대신 호스트가 조금 유리하다(지연이 0이다). 그건 받아들인다.
+ *
+ * 서버: party-football/ (Cloudflare Workers + partyserver)
+ */
+const NET_HOST = (location.hostname==='localhost'||location.hostname==='127.0.0.1')
+  ? location.hostname+':8789'               // wrangler dev
+  : 'minchan-football.changame.workers.dev';
+const SNAP_MS = 50;                          // 스냅샷 주기 — 20Hz
+const CMD_MS  = 33;                          // 조작 전송 주기 — 30Hz
+const CODE_AB = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // 0/O/1/I/L 뺀다
+const genCode = () => Array.from({length:4},()=>CODE_AB[(rnd()*CODE_AB.length)|0]).join('');
+
+const net = {
+  on:false, host:false, ready:false, sock:null, room:'', err:'',
+  snapT:0, cmdT:0, seq:0, lastSeq:-1,
+  /** 상대가 올린 조작. 호스트만 읽는다. */
+  rin:{x:0,z:0,sprint:false,press:false},
+  /** 보간용 스냅샷 두 장. 게스트만 쓴다. */
+  prev:null, cur:null, lerp:0,
+  send(o){ if(this.sock&&this.sock.readyState===1) this.sock.send(JSON.stringify(o)); },
+  close(){ if(this.sock){try{this.sock.close();}catch(_){}} this.sock=null;
+           this.on=false;this.ready=false;this.host=false;this.prev=this.cur=null;ctrlB=null; }
 };
+let ctrlB=null;            // 호스트 화면에서 "상대가 조종하는 선수"
+let chargeB=0, chargingB=false;
 let searchId=0;
+
+/* --- 방 목록 --- */
+let lobbySock=null;
+function watchRooms(){
+  if(lobbySock) return;
+  const sch=location.protocol==='https:'?'wss':'ws';
+  try{ lobbySock=new WebSocket(sch+'://'+NET_HOST+'/parties/lobby/global'); }catch(_){ renderRooms(null); return; }
+  lobbySock.onmessage=ev=>{ let m;try{m=JSON.parse(ev.data);}catch{return;} if(m.type==='rooms')renderRooms(m.rooms); };
+  lobbySock.onclose=()=>{ lobbySock=null; };
+  lobbySock.onerror=()=>renderRooms(null);
+}
+function renderRooms(list){
+  const box=$('rooms'); if(!box) return;
+  if(!list){ box.innerHTML='<p class="note">목록을 못 불러왔습니다. 코드로 들어가세요.</p>'; return; }
+  if(!list.length){ box.innerHTML='<p class="note">열려 있는 방이 없습니다. 먼저 만들어 보세요.</p>'; return; }
+  box.innerHTML='<div class="modes">'+list.map(r=>'<button data-a="joinRoom" data-v="'+r.code+'">'+r.code+' <small>1/2</small></button>').join('')+'</div>';
+}
+
+/* --- 접속 --- */
+function netOpen(code,asHost){
+  net.close();
+  net.room=code; net.host=asHost; net.on=true; net.err='';
+  const sch=location.protocol==='https:'?'wss':'ws';
+  let s; try{ s=new WebSocket(sch+'://'+NET_HOST+'/parties/room/'+code); }
+  catch(_){ netFail('서버에 연결할 수 없습니다.'); return; }
+  net.sock=s;
+  $('srT').innerHTML=(asHost?'방 코드 <b style="color:#ffe14d">'+code+'</b> · 상대를 기다리는 중':'방 '+code+' 에 들어가는 중')+'<span class="dots"><span>.</span><span>.</span><span>.</span></span>';
+  $('srS').textContent=asHost?'친구에게 이 코드를 알려주세요.':'';
+  $('onMain').style.display='none'; $('srch').style.display='block';
+  s.onopen=()=>{ net.send({type:'hello', squad:netSquad(), theme:S.theme||'none', name:(S.story&&S.story.name)||'PLAYER'}); };
+  s.onmessage=ev=>{ let m;try{m=JSON.parse(ev.data);}catch{return;} netMsg(m); };
+  s.onerror=()=>netFail('연결이 끊겼습니다.');
+  s.onclose=()=>{ if(net.on&&!net.ready) netFail('연결이 닫혔습니다.');
+                  else if(net.on){ net.on=false; if(body.classList.contains('ingame')){ alertMsg('상대와 연결이 끊겼습니다.'); leaveMatch(); show('online'); } } };
+}
+function netFail(msg){ net.err=msg; net.close(); $('srch').style.display='none'; $('onMain').style.display='block'; alertMsg(msg); }
+function netSquad(){ return lineupCards().map(c=>({name:c.name,pos:c.pos,g:c.g,ovr:c.ovr,sk:c.sk||''})); }
+
+function netMsg(m){
+  if(m.type==='full'){ netFail('이미 둘이 차 있는 방입니다.'); return; }
+  if(m.type==='seat'){ net.host=!!m.host; return; }
+  if(m.type==='room'){
+    if(m.ready&&net.host&&!net.ready) { /* 상대 hello 를 기다린다 */ }
+    if(!m.ready&&net.ready&&body.classList.contains('ingame')){ alertMsg('상대가 나갔습니다.'); leaveMatch(); show('online'); net.close(); }
+    return;
+  }
+  if(m.type==='hello'&&net.host){ net.ready=true; netHostStart(m); return; }
+  if(m.type==='start'&&!net.host){ net.ready=true; netGuestStart(m); return; }
+  if(m.type==='cmd'&&net.host){ netTakeCmd(m); return; }
+  if(m.type==='snap'&&!net.host){ netTakeSnap(m); return; }
+  if(m.type==='bye'){ if(body.classList.contains('ingame')){ alertMsg('상대가 나갔습니다.'); leaveMatch(); show('online'); } net.close(); }
+}
+
+/* --- 경기 시작 --- */
+function netHostStart(hello){
+  const myC=lineupCards().map(c=>({name:c.name,pos:c.pos,g:c.g,ovr:c.ovr,sk:c.sk||''}));
+  const pay={type:'start', host:myC, guest:hello.squad, hostTheme:S.theme||'none',
+             guestTheme:hello.theme||'none', len:S.len, hostName:(S.story&&S.story.name)||'HOST', guestName:hello.name||'GUEST'};
+  net.send(pay);
+  $('srch').style.display='none';
+  startMatch({names:[pay.hostName.slice(0,9),pay.guestName.slice(0,9)], my:myC, opp:hello.squad,
+              kitSet:true, myCol:0x1e6bff, oppCol:0xff3b3b, oppTheme:pay.guestTheme,
+              knock:true, net:true, onEnd:()=>{ net.send({type:'bye'}); net.close(); show('online'); }});
+}
+function netGuestStart(m){
+  $('srch').style.display='none';
+  startMatch({names:[m.hostName.slice(0,9),m.guestName.slice(0,9)], my:m.host, opp:m.guest,
+              kitSet:true, myCol:0x1e6bff, oppCol:0xff3b3b, oppTheme:m.guestTheme,
+              knock:true, net:true, len:m.len,
+              onEnd:()=>{ net.send({type:'bye'}); net.close(); show('online'); }});
+  // 게스트는 계산하지 않는다 — 스냅샷이 올 때까지 가만히 둔다.
+  state='ready'; readyT=99;
+}
+
+/* --- 호스트: 스냅샷 보내기 --- */
+const r2=v=>Math.round(v*100)/100;
+function netSendSnap(){
+  const ps=[];
+  for(let i=0;i<10;i++){const p=players[i];ps.push([r2(p.x),r2(p.z),r2(p.face),r2(p.jy),p.stun>0?1:0]);}
+  net.send({type:'snap', k:++net.seq,
+    b:[r2(ball.p.x),r2(ball.p.y),r2(ball.p.z)],
+    p:ps, s:score, tm:Math.round(time), st:state,
+    c:ctrlB?players.indexOf(ctrlB):-1,
+    o:ball.owner?players.indexOf(ball.owner):-1});
+}
+/* --- 호스트: 올라온 조작 받기 --- */
+function netTakeCmd(m){
+  if(m.k!==undefined){ if(m.k<=net.lastSeq) return; net.lastSeq=m.k; }
+  net.rin.x=m.x||0; net.rin.z=m.z||0; net.rin.sprint=!!m.sp; net.rin.press=!!m.pr;
+  if(!ctrlB||state!=='play') return;
+  (m.a||[]).forEach(a=>netAct(a,m));
+}
+/** 상대가 누른 버튼을 호스트 화면에서 실행한다. ctrl 대신 ctrlB 에 건다. */
+function netAct(a,m){
+  const p=ctrlB; if(!p) return;
+  if(a==='sd'){ if(ball.owner===p){chargingB=true;chargeB=0;}
+    else if(!ball.owner&&ball.p.y>0.5&&ball.p.y<2.6&&p.kickCd<=0&&Math.hypot(ball.p.x-p.x,ball.p.z-p.z)<1.9)shoot(p,0.75,(m.z||0)*3.4);
+    else if(p.tackCd<=0&&p.stun<=0)tackle(p); }
+  else if(a==='su'){ if(chargingB&&ball.owner===p)shoot(p,Math.max(0.25,chargeB),(m.z||0)*3.4+(rnd()-0.5)*0.8); chargingB=false; }
+  else if(a==='ps'){ if(ball.owner===p){let dx=m.x||0,dz=m.z||0;if(Math.hypot(dx,dz)<0.2){dx=Math.cos(p.face);dz=Math.sin(p.face);}
+      const mate=bestMate(p,dx,dz); if(mate)passToB(p,mate); } else switchB(); }
+  else if(a==='tk'){ if(ball.owner!==p&&p.tackCd<=0&&p.stun<=0)tackle(p); }
+  else if(a==='sw'){ switchB(); }
+  else if(a==='sk'){ if(ball.owner===p){ if(p.sk&&gaugeA>=100){gaugeA=0;startSkill(p,p.sk);} else trick(p); } }
+}
+/** passTo 는 팀0 기준으로 setCtrl 을 부른다. 상대 팀은 ctrlB 를 옮긴다. */
+function passToB(p,m){ passTo(p,m); ctrlB=m; }
+function switchB(){
+  let best=null,bd=1e9;
+  act.forEach(p=>{ if(p.team!==1||p.gk||p===ctrlB)return;
+    const d=Math.hypot(p.x-ball.p.x,p.z-ball.p.z); if(d<bd){bd=d;best=p;} });
+  if(best)ctrlB=best;
+}
+
+/* --- 게스트: 조작 올리기 --- */
+let actQ=[];
+function netQ(a){ if(net.on&&!net.host&&net.ready)actQ.push(a); }
+function netSendCmd(){
+  // 게스트 화면은 카메라가 뒤집혀 있다. 월드 좌표로 바꿔서 올린다.
+  net.send({type:'cmd', k:++net.seq, x:r2(-inp.x), z:r2(-inp.z), sp:inp.sprint, pr:pressing, a:actQ});
+  actQ=[];
+}
+/* --- 게스트: 스냅샷 받기 --- */
+function netTakeSnap(m){
+  if(net.cur&&m.k<=net.cur.k) return;        // 늦게 온 건 버린다
+  net.prev=net.cur; net.cur=m; net.lerp=0;
+  score[0]=m.s[0];score[1]=m.s[1];time=m.tm;
+  if(state!==m.st){ state=m.st; if(m.st==='goal')sfx.goal(); }
+  if(m.c>=0&&players[m.c]&&ctrl!==players[m.c])setCtrl(players[m.c],true);
+  ball.owner=m.o>=0?players[m.o]:null;
+}
+/** 받은 두 장 사이를 메운다. 네트워크는 20Hz, 화면은 60Hz 다. */
+function netLerp(dt){
+  const c=net.cur; if(!c) return;
+  const a=net.prev||c; net.lerp=Math.min(1,net.lerp+dt*(1000/SNAP_MS));
+  const t=net.lerp;
+  for(let i=0;i<10;i++){
+    const p=players[i],A=a.p[i],B=c.p[i]; if(!A||!B)continue;
+    p.nx=A[0]+(B[0]-A[0])*t; p.nz=A[1]+(B[1]-A[1])*t;
+    let da=B[2]-A[2]; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
+    p.nface=A[2]+da*t; p.jy=B[3];
+  }
+  ball.p.set(a.b[0]+(c.b[0]-a.b[0])*t, a.b[1]+(c.b[1]-a.b[1])*t, a.b[2]+(c.b[2]-a.b[2])*t);
+  ball.mesh.position.copy(ball.p);
+  ball.mesh.rotation.x+=dt*4; ball.mesh.rotation.z+=dt*3;
+}
+/* --- 게스트 프레임 — 계산은 없고 받은 걸 그리기만 한다 --- */
+function netGuestFrame(rdt){
+  const dt=rdt; T+=dt;
+  readInput();
+  net.cmdT-=rdt; if(net.cmdT<=0||actQ.length){ net.cmdT=CMD_MS/1000; netSendCmd(); }
+  if(charging){ if(ball.owner!==ctrl){charging=false;$('gauge').classList.remove('on');}
+    else{ charge=Math.min(1,charge+rdt/0.9); $('gauge').classList.add('on'); $('gf').style.width=(charge*100)+'%'; } }
+  netLerp(dt);
+  act.forEach(p=>updatePlayer(p,dt,false));
+  if(bannerT>0){bannerT-=rdt;if(bannerT<=0)$('banner').classList.remove('on');}
+  hud(); ctxButtons();
+  $('st').style.width=(ctrl.stam*100)+'%';
+  updateCamera(rdt); renderer.render(scene,camera);
+}
 
 /* ================= SCREENS ================= */
 let mTab='buy',onMsg='',rstArm=false;
@@ -1246,8 +1507,9 @@ const R={
     el.innerHTML=h;
   },
   online:function(){
-    const t=Math.min(6,Math.floor(S.rp/100));$('rk').textContent='랭크: '+TIERS[t]+' · '+S.rp+' RP';$('onMsg').textContent=onMsg;
+    $('rk').textContent='온라인 2인 대전';$('onMsg').textContent=onMsg;
     $('onMain').style.display='block';$('srch').style.display='none';
+    watchRooms();
   },
   settings:function(){
     $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD'][S.diff];$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oLen').textContent=(S.len/60)+'분';
@@ -1360,20 +1622,16 @@ const A={
   wcPick:v=>{wcNew(+v);R.wc();},
   wcReset:function(){S.wc=null;save();R.wc();},
   wcStart:function(){const w=S.wc,o=wcOpp();startMatch({names:[NAT[w.me][0],NAT[o][0]],my:w.squad,opp:genTeam(NAT[o][1]-4+S.diff*2),knock:w.stage==='k',onEnd:r=>wcAfter(r,o),wc:true,big:w.stage==='k',final:w.stage==='k'&&w.ko.length===2,myCol:natCol(w.me),oppCol:natCol(o)});},
-  online:function(mode){
-    initAudio();const id=++searchId;$('onMain').style.display='none';$('srch').style.display='block';
-    $('srS').textContent=mode==='friend'?'ROOM '+((rnd()*9000+1000)|0)+' · 친구 입장 대기 중 (AI가 대신 입장)':mode==='rank'?'랭크 대전 · '+TIERS[Math.min(6,Math.floor(S.rp/100))]:mode==='1v1'?'1 VS 1':'친선 경기';
-    Net.findMatch(mode,S.rp,myOvr()).then(function(o){
-      if(id!==searchId)return;
-      startMatch({names:['YOU',o.name],opp:genTeam(o.ovr),knock:mode!=='friendly',onEnd:function(r){
-        Net.report(mode,r);
-        if(mode==='rank'){const d=r.win?25:-15;S.rp=Math.max(0,S.rp+d);save();onMsg='랭크 대전 '+(r.win?'승리':'패배')+': '+(d>0?'+':'')+d+' RP';}
-        else onMsg=o.name+'와의 경기 '+(r.draw?'무승부':r.win?'승리':'패배');
-        show('online');}});
-    });
+  mkRoom:function(){initAudio();netOpen(genCode(),true);},
+  joinAsk:function(){
+    const c=(prompt('방 코드 4글자를 입력하세요')||'').trim().toUpperCase();
+    if(!c)return;
+    if(!/^[A-Z0-9]{4}$/.test(c)){alertMsg('코드는 4글자입니다.');return;}
+    initAudio();netOpen(c,false);
   },
-  cancelSearch:function(){searchId++;R.online();},
-  onlineBack:function(){searchId++;show('menu');},
+  joinRoom:function(v){initAudio();netOpen(String(v).toUpperCase(),false);},
+  cancelSearch:function(){net.close();R.online();},
+  onlineBack:function(){net.close();show('menu');},
   setSnd:function(){S.snd=!S.snd;if(crowdGain)crowdGain.gain.value=S.snd?0.05:0;save();R.settings();},
   setTheme:function(){const i=THKEYS.indexOf(S.theme||'none');S.theme=THKEYS[(i+1)%THKEYS.length];applyTeam(0,lineupCards(),null,S.theme);applyTheme(pv,S.theme);save();R.settings();sfx.post();},
   setStad:function(){S.stad=((S.stad||0)+1)%STAD.length;applyStadium();save();R.settings();},
@@ -1402,6 +1660,20 @@ load().then(function(){
   applyGfx();applyStadium();applyTeam(0,lineupCards(),null,S.theme);applyTeam(1,genTeam(70));
   show('menu');requestAnimationFrame(frame);
 });
+
+/* 로컬에서만 열리는 점검용 손잡이. 온라인 2인은 탭을 둘 띄워야 하는데
+   한쪽을 배경으로 돌리면 rAF 가 멈춰서, 밖에서 상태를 들여다볼 창이 필요하다.
+   배포본(vercel.app)에서는 아예 만들어지지 않는다. */
+if(location.hostname==='localhost'||location.hostname==='127.0.0.1'){
+  Object.assign(globalThis,{SF:{
+    get net(){return net;}, get ctrl(){return ctrl;}, get ctrlB(){return ctrlB;},
+    get state(){return state;}, get score(){return score;}, get time(){return time;},
+    get ball(){return ball.p;}, get players(){return players;},
+    cmd(o){ net.send(Object.assign({type:'cmd',k:++net.seq},o)); },
+    pos(i){const p=players[i];return {x:+p.x.toFixed(2),z:+p.z.toFixed(2),team:p.team};},
+    drop(){ball.owner=null;ball.v.set(0,0,0);}
+  }});
+}
 })();
 </script>
 </body>

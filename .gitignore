@@ -24,3 +24,6 @@ minchan_5/tools/screenshots/
 party-stickman/node_modules/
 party-stickman/.wrangler/
 .vite/
+
+# 워커 의존성
+party-football/node_modules/
