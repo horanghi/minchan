@@ -797,7 +797,9 @@ function switchPlayer(){
 function tackleAct(){if(net.on&&!net.host&&net.ready){netQ('tk');return;}
   if(state==='play'&&ball.owner!==ctrl&&ctrl.tackCd<=0&&ctrl.stun<=0)tackle(ctrl);}
 function shootDown(){
-  if(net.on&&!net.host&&net.ready){netQ('sd');if(ball.owner===ctrl){charging=true;charge=0;}return;}
+  if(net.on&&!net.host&&net.ready){netQ('sd');
+    if(ball.owner===ctrl||(state==='pen'&&pen&&pen.turn===1&&!pen.shot&&!pen.res)){charging=true;charge=0;}
+    return;}
   if(state==='pen'){if(pen.turn===0&&!pen.shot&&!pen.res){charging=true;charge=0;}return;}
   if(state!=='play'||cine>0)return;
   if(ball.owner===ctrl){charging=true;charge=0;}else if(!ball.owner&&ball.p.y>0.5&&ball.p.y<2.6&&ctrl.kickCd<=0&&Math.hypot(ball.p.x-ctrl.x,ball.p.z-ctrl.z)<1.9)shoot(ctrl,0.75,inp.z*3.4);else tackleAct();
@@ -1106,29 +1108,39 @@ function endMatch(pw){
   $('eh').textContent=draw?'DRAW':win?'YOU WIN!':'YOU LOSE';
   $('ep').innerHTML=cfg.names[0]+' '+gf+' - '+ga+' '+cfg.names[1]+(pen?'<br>승부차기 '+pen.s[0]+' - '+pen.s[1]:'')+'<br>+'+fmt(rw)+' Coins<br>평점 '+rt.toFixed(1)+' · 패스 '+st.po+'/'+st.pt+(cfg.mis?'<br>🎯 '+MIS[cfg.mis]+' — '+(lastRes.mis?'성공 ✅':'실패 ❌'):'');
   $('end').style.display='flex';sfx.whistle();
-  if(net.on&&net.host&&net.ready)net.send({type:'over',gf:gf,ga:ga});
+  if(net.on&&net.host&&net.ready)net.send({type:'over',gf:gf,ga:ga,pw:pw,pk:pen?pen.s:null});
 }
 /** 게스트 쪽 경기 종료. 게스트는 1번 팀이라 승패가 호스트와 뒤집힌다. */
 function netGuestEnd(m){
   state='end';
-  const gf=m.gf|0, ga=m.ga|0, win=ga>gf, draw=gf===ga;
+  const gf=m.gf|0, ga=m.ga|0;
+  // 승부차기로 갈렸으면 pw 가 이긴 팀이다. 게스트는 1번 팀이다.
+  const win = m.pw!==undefined&&m.pw!==null ? m.pw===1 : ga>gf;
+  const draw = (m.pw===undefined||m.pw===null) && gf===ga;
   score[0]=gf;score[1]=ga;
   lastRes={gf:ga,ga:gf,win:win,draw:draw,rating:6};
   const rw=win?50000:draw?20000:10000;S.coins+=rw;save();coins();
   $('eh').textContent=draw?'DRAW':win?'YOU WIN!':'YOU LOSE';
-  $('ep').innerHTML=cfg.names[0]+' '+gf+' - '+ga+' '+cfg.names[1]+'<br>+'+fmt(rw)+' Coins';
+  $('ep').innerHTML=cfg.names[0]+' '+gf+' - '+ga+' '+cfg.names[1]
+    +(m.pk?'<br>승부차기 '+m.pk[0]+' - '+m.pk[1]:'')+'<br>+'+fmt(rw)+' Coins';
   $('end').style.display='flex';sfx.whistle();
 }
 
 /* ================= PENALTY SHOOTOUT ================= */
-function startPens(){pen={n:[0,0],s:[0,0],turn:0,t:0,shot:false,res:null,wait:0,gtz:0};clearFx();banner('승부차기','슛 버튼 길게 눌러 차기 / 좌우로 막기',1.8);setupPen();}
+function startPens(){pen={n:[0,0],s:[0,0],turn:0,t:0,shot:false,res:null,wait:0,gtz:0};clearFx();
+  banner('승부차기','슛 버튼 길게 눌러 차기 / 좌우로 막기',1.8);
+  if(net.on&&net.host&&net.ready)net.send({type:'pens'});
+  setupPen();}
 function setupPen(){
   state='pen';const t=pen.turn,dir=t===0?1:-1;
   players.forEach(p=>{p.vx=p.vz=0;p.stun=0;p.poseT=0;p.x=(p.team===0?-1:1)*(2+p.i*1.5);p.z=-12;p.face=Math.PI/2;p.kickCd=0;});
   const k=players[t*5+4],gk=players[(1-t)*5];
   k.x=dir*(HL-9.6);k.z=0;k.face=t===0?0:Math.PI;gk.x=dir*(HL-0.9);gk.z=0;gk.face=t===0?Math.PI:0;
   ball.owner=null;ball.p.set(dir*(HL-8.6),BR,0);ball.v.set(0,0,0);ball.power=false;ball.fx='';ball.curve=0;
-  pen.t=0;pen.shot=false;pen.res=null;setCtrl(t===0?k:gk,true);charging=false;hud();
+  pen.t=0;pen.shot=false;pen.res=null;setCtrl(t===0?k:gk,true);charging=false;
+  chargingB=false;chargeB=0;
+  if(net.on&&net.host)ctrlB=(t===0?players[5]:players[9]);   // 막을 GK / 찰 키커
+  hud();
 }
 function penDone(){
   const a=pen.s[0],b=pen.s[1],na=pen.n[0],nb=pen.n[1];
@@ -1141,12 +1153,23 @@ function updatePen(rdt,dt){
   if(pen.res){pen.wait-=rdt;updateBall(dt);
     if(pen.wait<=0){const w=penDone();if(w>=0)endMatch(w);else{pen.turn=1-pen.turn;setupPen();}}return;}
   pen.t+=rdt;
+  const vs=net.on&&net.host&&net.ready;        // 사람 둘이 하는 승부차기인가
   if(t===1)gk.z=clamp(gk.z+inp.z*8*dt,-GW/2+0.3,GW/2-0.3);
+  else if(vs)gk.z=clamp(gk.z+net.rin.z*8*dt,-GW/2+0.3,GW/2-0.3);   // 게스트가 막는다
   if(!pen.shot){
     if(t===0){if(charging){charge=Math.min(1,charge+rdt/0.9);$('gauge').classList.add('on');$('gf').style.width=(charge*100)+'%';}}
+    else if(vs){ if(chargingB)chargeB=Math.min(1,chargeB+rdt/0.9); }   // 게스트가 모은다
     else if(pen.t>1.7){shoot(k,0.55+rnd()*0.3,(rnd()<0.5?-1:1)*(1.2+rnd()*2.3));pen.shot=true;pen.t=0;}
+    // 사람 둘이 할 때는 차는 쪽이 자리를 비우면 판이 영영 멈춘다.
+    // 10초가 지나면 힘없이 굴러가는 슛으로 처리하고 넘어간다.
+    if(vs&&!pen.shot&&pen.t>10){
+      shoot(k,0.3,(rnd()<0.5?-1:1)*(1+rnd()*1.5));pen.shot=true;pen.t=0;
+      charging=false;chargingB=false;$('gauge').classList.remove('on','max');
+      banner('시간 초과','',1.0);
+    }
   }else{
-    if(t===0){const d=pen.gtz-gk.z;gk.z+=clamp(d,-5.5*dt,5.5*dt);if(Math.abs(d)>1.2&&gk.poseT<=0){gk.pose='dive';gk.poseDir=Math.sign(d);gk.poseT=0.5;}}
+    // 사람이 막을 때는 스스로 움직인다. 컴퓨터일 때만 미리 정한 쪽으로 몸을 날린다.
+    if(t===0&&!vs){const d=pen.gtz-gk.z;gk.z+=clamp(d,-5.5*dt,5.5*dt);if(Math.abs(d)>1.2&&gk.poseT<=0){gk.pose='dive';gk.poseDir=Math.sign(d);gk.poseT=0.5;}}
     updateBall(dt);
     const b=ball.p;let res=null;
     if(Math.abs(b.x)>HL+0.3&&Math.abs(b.z)<GW/2&&b.y<GH)res='goal';
@@ -1375,9 +1398,7 @@ function frame(now){
     calcChasers();act.forEach(p=>updatePlayer(p,pd(p),false));collide();updateBall(dt);pickup();
     if(state==='play'&&!cfg.train){time-=dt;
       if(time<=0){
-        // 온라인은 비기면 비긴 채로 끝낸다. 승부차기는 호스트 화면에서만
-        // 도는 상태라 게스트가 따라올 수 없다 — 반쪽을 멈춰 세우느니 무승부가 낫다.
-        if(score[0]!==score[1]||!cfg.knock||cfg.net)endMatch();
+        if(score[0]!==score[1]||!cfg.knock)endMatch();
         else if(phase===0){phase=1;time=60;banner('연장전','1분',1.6);kickoff(1);}
         else startPens();
       }}
@@ -1524,6 +1545,7 @@ function netMsg(m){
   if(m.type==='cmd'&&net.host){ netTakeCmd(m); return; }
   if(m.type==='snap'&&!net.host){ netTakeSnap(m); return; }
   if(m.type==='over'&&!net.host){ netGuestEnd(m); return; }
+  if(m.type==='pens'&&!net.host){ clearFx();banner('승부차기','슛 버튼 길게 눌러 차기 / 좌우로 막기',1.8); return; }
   if(m.type==='bye'){ if(body.classList.contains('ingame')){ alertMsg('상대가 나갔습니다.'); leaveMatch(); show('online'); } net.close(); }
 }
 
@@ -1557,17 +1579,33 @@ function netSendSnap(){
     b:[r2(ball.p.x),r2(ball.p.y),r2(ball.p.z)],
     p:ps, s:score, tm:Math.round(time), st:state,
     c:ctrlB?players.indexOf(ctrlB):-1,
+    pen:pen?{s:pen.s,n:pen.n,turn:pen.turn,res:pen.res,shot:pen.shot}:null,
     o:ball.owner?players.indexOf(ball.owner):-1});
 }
 /* --- 호스트: 올라온 조작 받기 --- */
 function netTakeCmd(m){
   if(m.k!==undefined){ if(m.k<=net.lastSeq) return; net.lastSeq=m.k; }
   net.rin.x=m.x||0; net.rin.z=m.z||0; net.rin.sprint=!!m.sp; net.rin.press=!!m.pr;
-  if(!ctrlB||state!=='play') return;
+  // 승부차기도 상대 조작을 받아야 한다. 여기서 play 만 통과시키면
+  // 게스트의 슛 버튼이 영영 안 먹는다.
+  if(state!=='play'&&state!=='pen') return;
+  if(!ctrlB&&state!=='pen') return;
   (m.a||[]).forEach(a=>netAct(a,m));
 }
 /** 상대가 누른 버튼을 호스트 화면에서 실행한다. ctrl 대신 ctrlB 에 건다. */
 function netAct(a,m){
+  // 승부차기 — 게스트가 찰 차례일 때만 슛 버튼이 뜻을 가진다
+  if(state==='pen'){
+    if(pen&&pen.turn===1&&!pen.shot&&!pen.res){
+      if(a==='sd'){chargingB=true;chargeB=0;}
+      else if(a==='su'&&chargingB){
+        const aim=clamp((m.z||0)*3.5+(rnd()-0.5)*0.5,-3.6,3.6);
+        shoot(players[9],Math.max(0.3,chargeB),aim);
+        pen.shot=true;pen.t=0;chargingB=false;
+      }
+    }
+    return;
+  }
   const p=ctrlB; if(!p) return;
   if(a==='sd'){ if(ball.owner===p){chargingB=true;chargeB=0;}
     else if(!ball.owner&&ball.p.y>0.5&&ball.p.y<2.6&&p.kickCd<=0&&Math.hypot(ball.p.x-p.x,ball.p.z-p.z)<1.9)shoot(p,0.75,(m.z||0)*3.4);
@@ -1592,8 +1630,11 @@ function switchB(){
 let actQ=[];
 function netQ(a){ if(net.on&&!net.host&&net.ready)actQ.push(a); }
 function netSendCmd(){
-  // 게스트 화면은 카메라가 뒤집혀 있다. 월드 좌표로 바꿔서 올린다.
-  net.send({type:'cmd', k:++net.seq, x:r2(-inp.x), z:r2(-inp.z), sp:inp.sprint, pr:pressing, a:actQ});
+  // 경기 중에는 게스트 화면이 뒤집혀 있어 월드 좌표로 바꿔 올린다.
+  // **승부차기는 뒤집히지 않는다** — 양쪽이 같은 골대를 같은 각도로 본다.
+  // 여기서 부호를 뒤집으면 왼쪽으로 찼는데 오른쪽으로 날아간다.
+  const f = state==='pen' ? 1 : -1;
+  net.send({type:'cmd', k:++net.seq, x:r2(f*inp.x), z:r2(f*inp.z), sp:inp.sprint, pr:pressing, a:actQ});
   actQ=[];
 }
 /* --- 게스트: 스냅샷 받기 --- */
@@ -1603,6 +1644,15 @@ function netTakeSnap(m){
   score[0]=m.s[0];score[1]=m.s[1];time=m.tm;
   if(state==='end') return;                  // 끝난 판을 스냅샷이 되살리지 않게
   if(state!==m.st){ state=m.st; if(m.st==='goal')sfx.goal(); }
+  if(m.pen){
+    const was=pen?pen.res:null;
+    pen=pen||{s:[0,0],n:[0,0],turn:0,res:null,shot:false};
+    pen.s=m.pen.s;pen.n=m.pen.n;pen.turn=m.pen.turn;pen.shot=m.pen.shot;pen.res=m.pen.res;
+    if(pen.res&&pen.res!==was){
+      banner(pen.res==='goal'?'GOAL!':pen.res==='save'?'SAVE!':'MISS','PK '+pen.s[0]+' - '+pen.s[1],1.3);
+      if(pen.res==='goal')sfx.goal();
+    }
+  }else if(pen&&m.st!=='pen')pen=null;
   if(m.c>=0&&players[m.c]&&ctrl!==players[m.c])setCtrl(players[m.c],true);
   ball.owner=m.o>=0?players[m.o]:null;
 }
@@ -1627,7 +1677,9 @@ function netGuestFrame(rdt){
   const dt=rdt; T+=dt;
   readInput();
   net.cmdT-=rdt; if(net.cmdT<=0||actQ.length){ net.cmdT=CMD_MS/1000; netSendCmd(); }
-  if(charging){ if(ball.owner!==ctrl){charging=false;$('gauge').classList.remove('on','max');}
+  if(charging){
+    const kicking = state==='pen' ? (pen&&pen.turn===1&&!pen.shot&&!pen.res) : (ball.owner===ctrl);
+    if(!kicking){charging=false;$('gauge').classList.remove('on','max');}
     else{ charge=Math.min(1,charge+rdt/0.9); $('gauge').classList.add('on'); $('gf').style.width=(charge*100)+'%';
       $('gauge').classList.toggle('max',charge>=0.92); } }
   netLerp(dt);
