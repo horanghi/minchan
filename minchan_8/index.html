@@ -1315,6 +1315,10 @@ let tpHold=0, tpMix=0, camYaw=0;
 function myTeam(){ return (net.on && !net.host) ? 1 : 0; }
 /** 공격 중인가 — 우리 팀이 공을 가지고 있을 때. */
 function tpWant(){
+  // **온라인에서는 쓰지 않는다.** 시점이 바뀌면 입력을 화면 기준으로 돌려야 하는데,
+  // 게스트 조작은 호스트로 넘어가 월드 기준으로 적용된다. 양쪽 기준이 어긋나면
+  // 누른 방향과 다른 데로 간다. 1:1 에서 한쪽만 다른 시점을 쓰는 것도 불공평하다.
+  if(net.on) return false;
   if(!S.cam3 || state!=='play' || cfg.tut) return false;
   const o=ball.owner;
   return !!o && o.team===myTeam();
@@ -1760,7 +1764,7 @@ const R={
     netProbe().then(watchRooms);
   },
   settings:function(){
-    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD','ULTRA HARD'][S.diff]||'NORMAL';$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oCam').textContent=S.cam3?'공격 3인칭':'기본';$('oLen').textContent=(S.len/60)+'분';
+    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD','ULTRA HARD'][S.diff]||'NORMAL';$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oCam').textContent=S.cam3?'공격 3인칭':'기본';   // 온라인에서는 늘 기본 시점이다$('oLen').textContent=(S.len/60)+'분';
     $('oGfx').textContent=['LOW','MEDIUM','HIGH','ULTRA'][S.gfx];$('oStd').textContent=STAD[S.stad||0][0];rstArm=false;$('oRst').textContent='초기화';
   }
 };
