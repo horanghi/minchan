@@ -955,14 +955,21 @@ function updatePlayer(p,dt,frozen){
     else if(c==='dance')p.face+=dt*7;}}
   else if(p.stun>0)p.stun-=dt;
   else if(net.on&&!net.host){
-    // 게스트는 계산하지 않는다. 받은 좌표를 좇아갈 뿐이고, 다리·기울기 같은
-    // 나머지 연출은 아래 공용 코드가 그대로 돌려 준다.
-    if(p.nx!==undefined){
+    if(p===ctrl){
+      // **내 선수는 내 입력으로 바로 움직인다.** 호스트 왕복을 기다리면
+      // 누르고 0.2초 뒤에 움직이는 꼴이 된다. 틀어진 만큼은 아래에서 메운다.
+      // 부호는 netSendCmd 와 똑같이 맞춘다 — 예측과 호스트가 다른 데로 가면 안 된다.
+      const nf = state==='pen' ? 1 : -1;
+      dx=nf*inp.x;dz=nf*inp.z;
+      if(inp.sprint&&p.stam>0.03&&inp.mag>0.85){sp*=1.45;p.stam=Math.max(0,p.stam-dt*0.22);}else p.stam=Math.min(1,p.stam+dt*0.12);
+    }else if(p.nx!==undefined){
+      // 남의 선수는 받은 좌표를 좇아간다. 다리·기울기 같은 연출은
+      // 아래 공용 코드가 그대로 돌려 준다.
       const ex=p.nx-p.x,ez=p.nz-p.z,d=Math.hypot(ex,ez);
       if(d>0.03){dx=ex/d;dz=ez/d;sp=Math.min(sp*1.6,d/Math.max(dt,0.001));}
       if(p.nface!==undefined){let da=p.nface-p.face;while(da>Math.PI)da-=2*Math.PI;while(da<-Math.PI)da+=2*Math.PI;p.face+=da*Math.min(1,dt*14);}
-    }
-    p.stam=Math.min(1,p.stam+dt*0.12);
+      p.stam=Math.min(1,p.stam+dt*0.12);
+    }else p.stam=Math.min(1,p.stam+dt*0.12);
   }
   else if(p===ctrl){
     dx=inp.x;dz=inp.z;   // 아날로그: 살짝 밀면 걷기, 끝까지 밀면 달리기
@@ -984,6 +991,13 @@ function updatePlayer(p,dt,frozen){
   const k=Math.min(1,dt*(has?6.5:11));   // 공 소유 시 묵직하게, 없을 때 민첩하게
   p.vx+=(dx*sp-p.vx)*k;p.vz+=(dz*sp-p.vz)*k;
   p.x=clamp(p.x+p.vx*dt,-HL-0.5,HL+0.5);p.z=clamp(p.z+p.vz*dt,-HW-0.5,HW+0.5);
+  // 예측 보정 — 내가 그린 위치와 호스트가 말하는 위치를 좁힌다.
+  // 조금 어긋났으면 눈에 안 띄게 슬슬, 많이 어긋났으면(태클·골 뒤 재배치) 확 당긴다.
+  if(net.on&&!net.host&&p===ctrl&&p.nx!==undefined&&!frozen){
+    const ex=p.nx-p.x,ez=p.nz-p.z,d=Math.hypot(ex,ez);
+    if(d>6){p.x=p.nx;p.z=p.nz;}                       // 순간이동 수준이면 그냥 맞춘다
+    else if(d>0.12){const k2=Math.min(1,dt*(d>2.5?7:2.2));p.x+=ex*k2;p.z+=ez*k2;}
+  }
   if(p.gk)p.x=clamp(p.x,-HL+0.9,HL-0.9);
   const v=Math.hypot(p.vx,p.vz);
   p.turn=0;if(v>0.6){let a=Math.atan2(p.vz,p.vx)-p.face;while(a>Math.PI)a-=2*Math.PI;while(a<-Math.PI)a+=2*Math.PI;p.face+=a*Math.min(1,dt*(has?9:15));p.turn=a;}
@@ -1471,7 +1485,7 @@ function netProbe(){
     }catch(_){ clearTimeout(t); fin(true); }
   });
 }
-const SNAP_MS = 50;                          // 스냅샷 주기 — 20Hz
+const SNAP_MS = 40;                          // 스냅샷 주기 — 25Hz
 const CMD_MS  = 33;                          // 조작 전송 주기 — 30Hz
 const CODE_AB = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // 0/O/1/I/L 뺀다
 const randChars = n => Array.from({length:n},()=>CODE_AB[(rnd()*CODE_AB.length)|0]).join('');
@@ -1764,7 +1778,7 @@ const R={
     netProbe().then(watchRooms);
   },
   settings:function(){
-    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD','ULTRA HARD'][S.diff]||'NORMAL';$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oCam').textContent=S.cam3?'공격 3인칭':'기본';   // 온라인에서는 늘 기본 시점이다$('oLen').textContent=(S.len/60)+'분';
+    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD','ULTRA HARD'][S.diff]||'NORMAL';$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oCam').textContent=S.cam3?'공격 3인칭':'기본';$('oLen').textContent=(S.len/60)+'분';
     $('oGfx').textContent=['LOW','MEDIUM','HIGH','ULTRA'][S.gfx];$('oStd').textContent=STAD[S.stad||0][0];rstArm=false;$('oRst').textContent='초기화';
   }
 };
