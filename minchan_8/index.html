@@ -1106,6 +1106,18 @@ function endMatch(pw){
   $('eh').textContent=draw?'DRAW':win?'YOU WIN!':'YOU LOSE';
   $('ep').innerHTML=cfg.names[0]+' '+gf+' - '+ga+' '+cfg.names[1]+(pen?'<br>승부차기 '+pen.s[0]+' - '+pen.s[1]:'')+'<br>+'+fmt(rw)+' Coins<br>평점 '+rt.toFixed(1)+' · 패스 '+st.po+'/'+st.pt+(cfg.mis?'<br>🎯 '+MIS[cfg.mis]+' — '+(lastRes.mis?'성공 ✅':'실패 ❌'):'');
   $('end').style.display='flex';sfx.whistle();
+  if(net.on&&net.host&&net.ready)net.send({type:'over',gf:gf,ga:ga});
+}
+/** 게스트 쪽 경기 종료. 게스트는 1번 팀이라 승패가 호스트와 뒤집힌다. */
+function netGuestEnd(m){
+  state='end';
+  const gf=m.gf|0, ga=m.ga|0, win=ga>gf, draw=gf===ga;
+  score[0]=gf;score[1]=ga;
+  lastRes={gf:ga,ga:gf,win:win,draw:draw,rating:6};
+  const rw=win?50000:draw?20000:10000;S.coins+=rw;save();coins();
+  $('eh').textContent=draw?'DRAW':win?'YOU WIN!':'YOU LOSE';
+  $('ep').innerHTML=cfg.names[0]+' '+gf+' - '+ga+' '+cfg.names[1]+'<br>+'+fmt(rw)+' Coins';
+  $('end').style.display='flex';sfx.whistle();
 }
 
 /* ================= PENALTY SHOOTOUT ================= */
@@ -1363,7 +1375,9 @@ function frame(now){
     calcChasers();act.forEach(p=>updatePlayer(p,pd(p),false));collide();updateBall(dt);pickup();
     if(state==='play'&&!cfg.train){time-=dt;
       if(time<=0){
-        if(score[0]!==score[1]||!cfg.knock)endMatch();
+        // 온라인은 비기면 비긴 채로 끝낸다. 승부차기는 호스트 화면에서만
+        // 도는 상태라 게스트가 따라올 수 없다 — 반쪽을 멈춰 세우느니 무승부가 낫다.
+        if(score[0]!==score[1]||!cfg.knock||cfg.net)endMatch();
         else if(phase===0){phase=1;time=60;banner('연장전','1분',1.6);kickoff(1);}
         else startPens();
       }}
@@ -1509,6 +1523,7 @@ function netMsg(m){
     net.ready=true; netGuestStart(m); return; }
   if(m.type==='cmd'&&net.host){ netTakeCmd(m); return; }
   if(m.type==='snap'&&!net.host){ netTakeSnap(m); return; }
+  if(m.type==='over'&&!net.host){ netGuestEnd(m); return; }
   if(m.type==='bye'){ if(body.classList.contains('ingame')){ alertMsg('상대가 나갔습니다.'); leaveMatch(); show('online'); } net.close(); }
 }
 
@@ -1586,6 +1601,7 @@ function netTakeSnap(m){
   if(net.cur&&m.k<=net.cur.k) return;        // 늦게 온 건 버린다
   net.prev=net.cur; net.cur=m; net.lerp=0;
   score[0]=m.s[0];score[1]=m.s[1];time=m.tm;
+  if(state==='end') return;                  // 끝난 판을 스냅샷이 되살리지 않게
   if(state!==m.st){ state=m.st; if(m.st==='goal')sfx.goal(); }
   if(m.c>=0&&players[m.c]&&ctrl!==players[m.c])setCtrl(players[m.c],true);
   ball.owner=m.o>=0?players[m.o]:null;
@@ -1607,6 +1623,7 @@ function netLerp(dt){
 }
 /* --- 게스트 프레임 — 계산은 없고 받은 걸 그리기만 한다 --- */
 function netGuestFrame(rdt){
+  if(state==='end'){ renderer.render(scene,camera); return; }
   const dt=rdt; T+=dt;
   readInput();
   net.cmdT-=rdt; if(net.cmdT<=0||actQ.length){ net.cmdT=CMD_MS/1000; netSendCmd(); }
