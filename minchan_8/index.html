@@ -905,14 +905,26 @@ function ai(p,dt){
       return {x:bx,z:bz,s:1.1};}
     return {x:gx,z:tz,s:s};
   }
-  const sm=p.team===1?[0.86,0.93,1][S.diff]:1;
+  const sm=p.team===1?([0.86,0.93,1,1.07][S.diff]||0.93):1;
   if(own===p){
     p.hold+=dt;const gx=dir*HL,dg=Math.hypot(gx-p.x,p.z);
     if(p.team===1&&p.sk&&gaugeA>=100&&dg<22&&cine<=0){gaugeA=0;startSkill(p,p.sk);return {x:p.x,z:p.z,s:1};}
-    if(dg<15||(dg<21&&rnd()<dt*0.5)){shoot(p,0.45+rnd()*0.4,(rnd()<0.5?-1:1)*(1.5+rnd()*2.2));return {x:p.x,z:p.z,s:1};}
+    const ultra=S.diff>=3;
     let near=null,nd=1e9;
     act.forEach(o=>{if(o.team===p.team)return;const d=Math.hypot(o.x-p.x,o.z-p.z);if(d<nd){nd=d;near=o;}});
-    if(nd<3&&p.hold>0.5){const m=bestMate(p,dir,0);if(m&&rnd()<dt*4){passTo(p,m);return {x:p.x,z:p.z,s:1};}}
+    if(ultra){
+      // 울트라는 급히 차지 않는다. 더 파고들어 각을 만든 뒤에 찬다 —
+      // 멀리서 던지는 슛은 골키퍼가 거의 다 막는다.
+      const clear=nd>2.6, close=dg<11.5;
+      if((close&&clear)||dg<6.5||(dg<16&&nd>5&&rnd()<dt*0.8)){
+        shoot(p,0.7+rnd()*0.3,(rnd()<0.5?-1:1)*(2.2+rnd()*1.4));return {x:p.x,z:p.z,s:1};}
+      // 그리고 훨씬 자주 돌린다. 혼자 몰고 가면 결국 뺏긴다.
+      if(p.hold>0.25&&(nd<4.5||rnd()<dt*1.2)){const m=bestMate(p,dir,0);
+        if(m&&rnd()<dt*7){passTo(p,m);return {x:p.x,z:p.z,s:1};}}
+    }else{
+      if(dg<15||(dg<21&&rnd()<dt*0.5)){shoot(p,0.45+rnd()*0.4,(rnd()<0.5?-1:1)*(1.5+rnd()*2.2));return {x:p.x,z:p.z,s:1};}
+      if(nd<3&&p.hold>0.5){const m=bestMate(p,dir,0);if(m&&rnd()<dt*4){passTo(p,m);return {x:p.x,z:p.z,s:1};}}
+    }
     let tz=p.z*0.7;if(near&&nd<4.5&&(near.x-p.x)*dir>-0.5)tz=clamp(p.z+(p.z>=near.z?1:-1)*5,-HW+2,HW-2);
     return {x:gx-dir*6,z:tz,s:sm};
   }
@@ -920,7 +932,7 @@ function ai(p,dt){
     const run=p.i===4?dir*13:dir*8;
     return {x:clamp(p.hx+bx*0.55+run,-HL+5,HL-4),z:clamp(p.hz+Math.sin(T*0.7+p.i*2.1)*5+bz*0.15,-HW+2,HW-2),s:sm};
   }
-  if(chaser[p.team]===p){
+  if(chaser[p.team]===p||(S.diff>=3&&p.team===1&&own&&own.team!==p.team&&Math.hypot(p.x-bx,p.z-bz)<9)){
     const cd=Math.hypot(ctrl.x-bx,ctrl.z-bz);
     if(p.team===1||cd>7||pressing){
       if(own&&own.team!==p.team&&Math.hypot(own.x-p.x,own.z-p.z)<1.5&&p.tackCd<=0&&rnd()<dt*3)tackle(p);
@@ -1342,7 +1354,7 @@ function frame(now){
   else if(state==='play'){
     if(cine>0){cine-=rdt;if(cine<=0){cine=0;if(pend){const q=pend;pend=null;if(ball.owner===q.p)specialShot(q.p,q.k);}}}
     if(tb){tb.t-=dt;if(tb.t<=0){tb=null;$('tint').style.display='none';}}
-    gauge=Math.min(100,gauge+dt*(cfg.train?30:2.5));if(!cfg.train)gaugeA=Math.min(100,gaugeA+dt*(cfg.boss||cfg.rival?8:2.5));
+    gauge=Math.min(100,gauge+dt*(cfg.train?30:2.5));if(!cfg.train)gaugeA=Math.min(100,gaugeA+dt*(cfg.boss||cfg.rival?8:S.diff>=3?6:2.5));
     if(chargingB){if(ball.owner!==ctrlB)chargingB=false;else chargeB=Math.min(1,chargeB+rdt/0.9);}
     if(charging){if(ball.owner!==ctrl){charging=false;$('gauge').classList.remove('on','max');}
       else{charge=Math.min(1,charge+rdt/0.9);$('gauge').classList.add('on');$('gf').style.width=(charge*100)+'%';
@@ -1388,13 +1400,43 @@ function frame(now){
  *
  * 서버: party-football/ (Cloudflare Workers + partyserver)
  */
-const NET_HOST = (location.hostname==='localhost'||location.hostname==='127.0.0.1')
-  ? location.hostname+':8789'               // wrangler dev
-  : 'minchan-football.changame.workers.dev';
+/* 중계 서버는 두 군데를 본다.
+ *
+ * 축구 전용 워커(minchan-football)가 올라가 있으면 그걸 쓴다. 아직 안 올라갔으면
+ * **이미 돌아가는 스틱맨 중계기로 비켜 간다.** 중계기는 게임 내용을 모르고
+ * 자리 둘을 이어 주기만 해서 축구에도 그대로 맞는다 — 서버를 고치지 않으니
+ * 스틱맨이 위험해질 일도 없다.
+ *
+ * 비켜 갈 때는 방 코드를 다섯 글자 FB… 로 만든다. 스틱맨은 네 글자만 만들어서
+ * **코드가 겹칠 수 없다.** 남의 방에 잘못 들어가는 사고를 막는다.
+ */
+const NET_PRIMARY = 'minchan-football.changame.workers.dev';
+const NET_BACKUP  = 'minchan-stickman.changame.workers.dev';
+const NET_LOCAL   = (location.hostname==='localhost'||location.hostname==='127.0.0.1');
+let NET_HOST = NET_LOCAL ? location.hostname+':8789' : NET_PRIMARY;
+let netShared = false;          // 남의 중계기를 빌려 쓰는 중인가
+let netProbed = false;
+/** 전용 워커가 살아 있는지 한 번만 확인한다. */
+function netProbe(){
+  if(netProbed||NET_LOCAL) return Promise.resolve();
+  netProbed = true;
+  return new Promise(res=>{
+    let done=false;
+    const fin=(shared)=>{ if(done)return; done=true;
+      netShared=shared; NET_HOST=shared?NET_BACKUP:NET_PRIMARY; res(); };
+    const t=setTimeout(()=>fin(true),2500);
+    try{
+      const ws=new WebSocket('wss://'+NET_PRIMARY+'/parties/lobby/global');
+      ws.onopen=()=>{clearTimeout(t);try{ws.close();}catch(_){}fin(false);};
+      ws.onerror=()=>{clearTimeout(t);fin(true);};
+    }catch(_){ clearTimeout(t); fin(true); }
+  });
+}
 const SNAP_MS = 50;                          // 스냅샷 주기 — 20Hz
 const CMD_MS  = 33;                          // 조작 전송 주기 — 30Hz
 const CODE_AB = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // 0/O/1/I/L 뺀다
-const genCode = () => Array.from({length:4},()=>CODE_AB[(rnd()*CODE_AB.length)|0]).join('');
+const randChars = n => Array.from({length:n},()=>CODE_AB[(rnd()*CODE_AB.length)|0]).join('');
+const genCode = () => netShared ? 'FB'+randChars(3) : randChars(4);
 
 const net = {
   on:false, host:false, ready:false, sock:null, room:'', err:'',
@@ -1424,12 +1466,15 @@ function watchRooms(){
 function renderRooms(list){
   const box=$('rooms'); if(!box) return;
   if(!list){ box.innerHTML='<p class="note">목록을 못 불러왔습니다. 코드로 들어가세요.</p>'; return; }
+  // 중계기를 빌려 쓰는 동안은 다른 게임 방이 같은 목록에 섞인다. 축구 방만 낸다.
+  if(netShared) list = list.filter(r=>/^FB/i.test(r.code||''));
   if(!list.length){ box.innerHTML='<p class="note">열려 있는 방이 없습니다. 먼저 만들어 보세요.</p>'; return; }
   box.innerHTML='<div class="modes">'+list.map(r=>'<button data-a="joinRoom" data-v="'+r.code+'">'+r.code+' <small>1/2</small></button>').join('')+'</div>';
 }
 
 /* --- 접속 --- */
-function netOpen(code,asHost){
+async function netOpen(code,asHost){
+  await netProbe();
   net.close();
   net.room=code; net.host=asHost; net.on=true; net.err='';
   const sch=location.protocol==='https:'?'wss':'ws';
@@ -1439,7 +1484,7 @@ function netOpen(code,asHost){
   $('srT').innerHTML=(asHost?'방 코드 <b style="color:#ffe14d">'+code+'</b> · 상대를 기다리는 중':'방 '+code+' 에 들어가는 중')+'<span class="dots"><span>.</span><span>.</span><span>.</span></span>';
   $('srS').textContent=asHost?'친구에게 이 코드를 알려주세요.':'';
   $('onMain').style.display='none'; $('srch').style.display='block';
-  s.onopen=()=>{ net.send({type:'hello', squad:netSquad(), theme:S.theme||'none', name:(S.story&&S.story.name)||'PLAYER'}); };
+  s.onopen=()=>{ net.send({type:'hello', g:'fb', squad:netSquad(), theme:S.theme||'none', name:(S.story&&S.story.name)||'PLAYER'}); };
   s.onmessage=ev=>{ let m;try{m=JSON.parse(ev.data);}catch{return;} netMsg(m); };
   s.onerror=()=>netFail('연결이 끊겼습니다.');
   s.onclose=()=>{ if(net.on&&!net.ready) netFail('연결이 닫혔습니다.');
@@ -1456,8 +1501,12 @@ function netMsg(m){
     if(!m.ready&&net.ready&&body.classList.contains('ingame')){ alertMsg('상대가 나갔습니다.'); leaveMatch(); show('online'); net.close(); }
     return;
   }
-  if(m.type==='hello'&&net.host){ net.ready=true; netHostStart(m); return; }
-  if(m.type==='start'&&!net.host){ net.ready=true; netGuestStart(m); return; }
+  if(m.type==='hello'&&net.host){
+    if(m.g!=='fb'){ netFail('축구 방이 아닙니다. 다른 코드로 해보세요.'); return; }
+    net.ready=true; netHostStart(m); return; }
+  if(m.type==='start'&&!net.host){
+    if(m.g!=='fb'){ netFail('축구 방이 아닙니다. 다른 코드로 해보세요.'); return; }
+    net.ready=true; netGuestStart(m); return; }
   if(m.type==='cmd'&&net.host){ netTakeCmd(m); return; }
   if(m.type==='snap'&&!net.host){ netTakeSnap(m); return; }
   if(m.type==='bye'){ if(body.classList.contains('ingame')){ alertMsg('상대가 나갔습니다.'); leaveMatch(); show('online'); } net.close(); }
@@ -1466,7 +1515,7 @@ function netMsg(m){
 /* --- 경기 시작 --- */
 function netHostStart(hello){
   const myC=lineupCards().map(c=>({name:c.name,pos:c.pos,g:c.g,ovr:c.ovr,sk:c.sk||''}));
-  const pay={type:'start', host:myC, guest:hello.squad, hostTheme:S.theme||'none',
+  const pay={type:'start', g:'fb', host:myC, guest:hello.squad, hostTheme:S.theme||'none',
              guestTheme:hello.theme||'none', len:S.len, hostName:(S.story&&S.story.name)||'HOST', guestName:hello.name||'GUEST'};
   net.send(pay);
   $('srch').style.display='none';
@@ -1639,10 +1688,10 @@ const R={
   online:function(){
     $('rk').textContent='온라인 2인 대전';$('onMsg').textContent=onMsg;
     $('onMain').style.display='block';$('srch').style.display='none';
-    watchRooms();
+    netProbe().then(watchRooms);
   },
   settings:function(){
-    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD'][S.diff];$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oCam').textContent=S.cam3?'공격 3인칭':'기본';$('oLen').textContent=(S.len/60)+'분';
+    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD','ULTRA HARD'][S.diff]||'NORMAL';$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oCam').textContent=S.cam3?'공격 3인칭':'기본';$('oLen').textContent=(S.len/60)+'분';
     $('oGfx').textContent=['LOW','MEDIUM','HIGH','ULTRA'][S.gfx];$('oStd').textContent=STAD[S.stad||0][0];rstArm=false;$('oRst').textContent='초기화';
   }
 };
@@ -1732,7 +1781,7 @@ const A={
   storyGo:function(){const stg=STORY[S.story.i];if(!stg)return;if(stg.tut){A.tut();return;}const opp=storyOpp(stg);
     dlgTheme=stg.th||'none';dialog(stg.pre,function(){startMatch({names:[S.story.name,stg.o[0]],my:storySquad(),opp:opp,knock:!!stg.ko,mis:stg.m,big:!!stg.big,final:!!stg.final,rival:!!stg.rival,start:stg.half?[0,1]:null,half:!!stg.half,story:true,oppCol:stg.col,oppTheme:stg.th,onEnd:r=>storyAfter(r,stg,opp)});},opp);},
   setGfx:function(){S.gfx=(S.gfx+1)%4;applyGfx();save();R.settings();},
-  play:function(){startMatch({names:['MY TEAM','RIVALS'],opp:genTeam(myOvr()-3+S.diff*3),knock:true,onEnd:()=>show('menu')});},
+  play:function(){startMatch({names:['MY TEAM','RIVALS'],opp:genTeam(myOvr()-3+S.diff*3+(S.diff>=3?3:0)),knock:true,onEnd:()=>show('menu')});},
   train:function(){startMatch({names:['MY TEAM','TRAIN'],opp:genTeam(65),train:true,oppTheme:'monk',onEnd:()=>show('menu')});},
   lineup:function(v){
     const c=S.roster.find(x=>x.id===+v);if(!c||S.lineup.indexOf(c.id)>=0)return;
@@ -1751,12 +1800,12 @@ const A={
   sell:function(v){const i=S.roster.findIndex(c=>c.id===+v);if(i<0||S.lineup.indexOf(+v)>=0)return;const c=S.roster[i];S.coins+=Math.round(value(c)*0.5);S.roster.splice(i,1);save();coins();R.market();},
   wcPick:v=>{wcNew(+v);R.wc();},
   wcReset:function(){S.wc=null;save();R.wc();},
-  wcStart:function(){const w=S.wc,o=wcOpp();startMatch({names:[NAT[w.me][0],NAT[o][0]],my:w.squad,opp:genTeam(NAT[o][1]-4+S.diff*2),knock:w.stage==='k',onEnd:r=>wcAfter(r,o),wc:true,big:w.stage==='k',final:w.stage==='k'&&w.ko.length===2,myCol:natCol(w.me),oppCol:natCol(o)});},
+  wcStart:function(){const w=S.wc,o=wcOpp();startMatch({names:[NAT[w.me][0],NAT[o][0]],my:w.squad,opp:genTeam(NAT[o][1]-4+S.diff*2+(S.diff>=3?2:0)),knock:w.stage==='k',onEnd:r=>wcAfter(r,o),wc:true,big:w.stage==='k',final:w.stage==='k'&&w.ko.length===2,myCol:natCol(w.me),oppCol:natCol(o)});},
   mkRoom:function(){initAudio();netOpen(genCode(),true);},
   joinAsk:function(){
     const c=(prompt('방 코드 4글자를 입력하세요')||'').trim().toUpperCase();
     if(!c)return;
-    if(!/^[A-Z0-9]{4}$/.test(c)){alertMsg('코드는 4글자입니다.');return;}
+    if(!/^[A-Z0-9]{4,5}$/.test(c)){alertMsg('코드를 다시 확인하세요.');return;}
     initAudio();netOpen(c,false);
   },
   joinRoom:function(v){initAudio();netOpen(String(v).toUpperCase(),false);},
@@ -1766,7 +1815,7 @@ const A={
   setCam:function(){S.cam3=!S.cam3;save();R.settings();sfx.post();},
   setTheme:function(){const i=THKEYS.indexOf(S.theme||'none');S.theme=THKEYS[(i+1)%THKEYS.length];applyTeam(0,lineupCards(),null,S.theme);applyTheme(pv,S.theme);save();R.settings();sfx.post();},
   setStad:function(){S.stad=((S.stad||0)+1)%STAD.length;applyStadium();save();R.settings();},
-  setDiff:function(){S.diff=(S.diff+1)%3;save();R.settings();},
+  setDiff:function(){S.diff=(S.diff+1)%4;save();R.settings();},
   setLen:function(){S.len=S.len===180?60:S.len+60;save();R.settings();},
   reset:function(){
     if(!rstArm){rstArm=true;$('oRst').textContent='한 번 더 누르면 삭제';return;}
