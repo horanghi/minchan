@@ -212,6 +212,7 @@ h3{font-size:14px;margin:16px 0 8px;color:#ffe14d}
   <div class="set">그래픽<button class="btn" id="oGfx" data-a="setGfx"></button></div>
   <div class="set">경기장<button class="btn" id="oStd" data-a="setStad"></button></div>
   <div class="set">우리 팀 외형<button class="btn" id="oTh" data-a="setTheme"></button></div>
+  <div class="set">카메라<button class="btn" id="oCam" data-a="setCam"></button></div>
   <div class="set">저장 데이터 초기화<button class="btn b2" id="oRst" data-a="reset">초기화</button></div></div>
 
 <script>
@@ -885,6 +886,11 @@ function updatePlayer(p,dt,frozen){
   }
   else if(p===ctrl){
     dx=inp.x;dz=inp.z;   // 아날로그: 살짝 밀면 걷기, 끝까지 밀면 달리기
+    if(tpMix>0.001){     // 3인칭일 때는 "앞"이 카메라 앞쪽이다
+      const c=Math.cos(camYaw),s=Math.sin(camYaw);
+      const rx=inp.x*c-inp.z*s, rz=inp.x*s+inp.z*c;
+      dx+=(rx-dx)*tpMix; dz+=(rz-dz)*tpMix;
+    }
     if(inp.sprint&&p.stam>0.03&&inp.mag>0.85){sp*=1.45;p.stam=Math.max(0,p.stam-dt*0.22);}else p.stam=Math.min(1,p.stam+dt*0.12);
   }else if(p===ctrlB){
     dx=net.rin.x;dz=net.rin.z;const mg=Math.hypot(dx,dz);
@@ -1177,6 +1183,27 @@ function storyAfter(r,stg,opp){
 }
 /* ================= CAMERA ================= */
 const camPos=new THREE.Vector3(-20,14,0),camLook=new THREE.Vector3();
+/* 내가 공을 잡았을 때만 어깨 너머로 본다.
+ *
+ * 공 소유는 1초에도 몇 번씩 바뀌어서, 조건을 그대로 쓰면 카메라가 깜빡인다.
+ * 놓친 뒤에도 tpHold 동안 붙잡아 두고, 전환 자체도 천천히 섞는다. */
+let tpHold=0, tpMix=0, camYaw=0;
+/** 내 팀 번호. 온라인 참가자는 1번 팀이다. */
+function myTeam(){ return (net.on && !net.host) ? 1 : 0; }
+/** 공격 중인가 — 우리 팀이 공을 가지고 있을 때. */
+function tpWant(){
+  if(!S.cam3 || state!=='play' || cfg.tut) return false;
+  const o=ball.owner;
+  return !!o && o.team===myTeam();
+}
+function tpStep(dt){
+  const o=ball.owner, foeHas=!!o && o.team!==myTeam();
+  if(tpWant())tpHold=0.7;
+  else if(foeHas)tpHold=0;                    // 수비로 바뀌면 바로 넓게 본다
+  else tpHold=Math.max(0,tpHold-dt);          // 공이 뜬 동안은 잠깐 붙잡는다
+  const want=tpHold>0?1:0;
+  tpMix+=(want-tpMix)*Math.min(1,dt*(want?3.2:5.5));   // 돌아올 때는 더 빠르게
+}
 function updateCamera(dt){
   const portrait=camera.aspect<1;let tx,ty,tz,lx,ly=0,lz,k=5;
   if(state==='intro'){const h=players[4];k=6;
@@ -1192,10 +1219,31 @@ function updateCamera(dt){
   else if(state==='goal'){if(goalT>GOALT-0.9||!scorer){tx=goalSide*(HL-9);ty=4.5;tz=ball.p.z+7;lx=ball.p.x;ly=1;lz=ball.p.z;k=2.5;}else{const c=scorer;tx=c.x-goalSide*4.2;ty=2.2;tz=c.z+2.6;lx=c.x;ly=1.5;lz=c.z;k=4;}}
   else if(cine>0&&cineP){const d=cineP.team===0?1:-1;tx=cineP.x-d*5.5;ty=2.8;tz=cineP.z+3;lx=cineP.x+d*2;ly=1.2;lz=cineP.z;k=9;}
   else{const cs=(net.on&&!net.host)?-1:1,fx=ctrl.x*0.6+ball.p.x*0.4,fz=ctrl.z*0.6+ball.p.z*0.4;
-    tx=fx-cs*(portrait?21:17);ty=portrait?18:13;tz=fz*0.75;lx=fx+cs*5;lz=fz*0.9;}
+    tx=fx-cs*(portrait?21:17);ty=portrait?18:13;tz=fz*0.75;lx=fx+cs*5;lz=fz*0.9;
+    if(tpMix>0.001){   // 어깨 너머 시점과 섞는다
+      const p=ctrl,m=tpMix;
+      // **선수가 보는 쪽을 그대로 따라가면 안 된다.** 터치라인 쪽을 보고 서면
+      // 화면이 관중석으로 가득 차고 경기가 안 보인다. 공격 골대 방향을 섞어서
+      // 늘 경기장 안쪽을 향하게 한다.
+      const gd=myTeam()===0?1:-1, gx=gd*HL;
+      let vx=Math.cos(p.face), vz=Math.sin(p.face);
+      const hx=gx-p.x, hz=-p.z, hl=Math.hypot(hx,hz)||1;
+      vx+=(hx/hl)*0.85; vz+=(hz/hl)*0.85;
+      const vl=Math.hypot(vx,vz)||1; vx/=vl; vz/=vl;
+      // 바로 뒤에서 보면 공이 선수 몸에 가린다 — 어깨 너머로 비켜 선다
+      const sx=-vz*1.5, sz=vx*1.5;
+      let ax=p.x-vx*7.6+sx, az=p.z-vz*7.6+sz;
+      // 카메라가 경기장 밖으로 너무 나가지 않게 묶는다
+      ax=clamp(ax,-HL-7,HL+7); az=clamp(az,-HW-5,HW+5);
+      const bx=p.x+vx*6.5+sx*0.3, bz=p.z+vz*6.5+sz*0.3;
+      tx+=(ax-tx)*m; ty+=((portrait?5.0:4.4)-ty)*m; tz+=(az-tz)*m;
+      lx+=(bx-lx)*m; ly+=(0.55-ly)*m; lz+=(bz-lz)*m;
+      k=Math.max(k,4.5);
+    }}
   if(camCut){k=1;camCut=false;}else k=Math.min(1,dt*k);
   camPos.x+=(tx-camPos.x)*k;camPos.y+=(ty-camPos.y)*k;camPos.z+=(tz-camPos.z)*k;
   camLook.x+=(lx-camLook.x)*k;camLook.y+=(ly-camLook.y)*k;camLook.z+=(lz-camLook.z)*k;
+  camYaw=Math.atan2(camLook.z-camPos.z, camLook.x-camPos.x);
   camera.position.copy(camPos);
   if(shake>0){shake-=dt;camera.position.x+=(rnd()-0.5)*shake*1.5;camera.position.y+=(rnd()-0.5)*shake*1.5;}
   camera.lookAt(camLook);
@@ -1243,7 +1291,7 @@ function frame(now){
   }else{act.forEach(p=>updatePlayer(p,dt,true));if(state!=='menu'||ball.mesh.visible)updateBall(dt);}
   $('st').style.width=(ctrl.stam*100)+'%';
   if(net.on&&net.host&&net.ready){net.snapT-=rdt;if(net.snapT<=0){net.snapT=SNAP_MS/1000;netSendSnap();}}
-  updateCamera(rdt);renderer.render(scene,camera);
+  tpStep(rdt);updateCamera(rdt);renderer.render(scene,camera);
   if(curScr==='team'&&state==='menu'){
     if(!pvR){pvR=new THREE.WebGLRenderer({canvas:$('pvC'),antialias:true,alpha:true});pvR.setPixelRatio(Math.min(window.devicePixelRatio||1,2));pvR.setSize(170,220,false);}
     pv.face+=rdt*0.9;updatePlayer(pv,rdt,true);pvR.render(pvScene,pvCam);}
@@ -1441,7 +1489,7 @@ function netGuestFrame(rdt){
   if(bannerT>0){bannerT-=rdt;if(bannerT<=0)$('banner').classList.remove('on');}
   hud(); ctxButtons();
   $('st').style.width=(ctrl.stam*100)+'%';
-  updateCamera(rdt); renderer.render(scene,camera);
+  tpStep(rdt);updateCamera(rdt); renderer.render(scene,camera);
 }
 
 /* ================= SCREENS ================= */
@@ -1514,7 +1562,7 @@ const R={
     watchRooms();
   },
   settings:function(){
-    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD'][S.diff];$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oLen').textContent=(S.len/60)+'분';
+    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD'][S.diff];$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oCam').textContent=S.cam3?'공격 3인칭':'기본';$('oLen').textContent=(S.len/60)+'분';
     $('oGfx').textContent=['LOW','MEDIUM','HIGH','ULTRA'][S.gfx];$('oStd').textContent=STAD[S.stad||0][0];rstArm=false;$('oRst').textContent='초기화';
   }
 };
@@ -1635,6 +1683,7 @@ const A={
   cancelSearch:function(){net.close();R.online();},
   onlineBack:function(){net.close();show('menu');},
   setSnd:function(){S.snd=!S.snd;if(crowdGain)crowdGain.gain.value=S.snd?0.05:0;save();R.settings();},
+  setCam:function(){S.cam3=!S.cam3;save();R.settings();sfx.post();},
   setTheme:function(){const i=THKEYS.indexOf(S.theme||'none');S.theme=THKEYS[(i+1)%THKEYS.length];applyTeam(0,lineupCards(),null,S.theme);applyTheme(pv,S.theme);save();R.settings();sfx.post();},
   setStad:function(){S.stad=((S.stad||0)+1)%STAD.length;applyStadium();save();R.settings();},
   setDiff:function(){S.diff=(S.diff+1)%3;save();R.settings();},
@@ -1673,7 +1722,9 @@ if(location.hostname==='localhost'||location.hostname==='127.0.0.1'){
     get ball(){return ball.p;}, get players(){return players;},
     cmd(o){ net.send(Object.assign({type:'cmd',k:++net.seq},o)); },
     pos(i){const p=players[i];return {x:+p.x.toFixed(2),z:+p.z.toFixed(2),team:p.team};},
-    drop(){ball.owner=null;ball.v.set(0,0,0);}
+    drop(){ball.owner=null;ball.v.set(0,0,0);},
+    get owner(){return ball.owner;}, get cam(){return camera;},
+    get tp(){return {want:tpWant(),hold:+tpHold.toFixed(2),mix:+tpMix.toFixed(3),cam3:!!S.cam3,myTeam:myTeam(),ownerTeam:ball.owner?ball.owner.team:null};}
   }});
 }
 })();
