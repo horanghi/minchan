@@ -207,6 +207,7 @@ h3{font-size:14px;margin:16px 0 8px;color:#ffe14d}
   <div class="set">경기 시간<button class="btn" id="oLen" data-a="setLen"></button></div>
   <div class="set">그래픽<button class="btn" id="oGfx" data-a="setGfx"></button></div>
   <div class="set">경기장<button class="btn" id="oStd" data-a="setStad"></button></div>
+  <div class="set">우리 팀 외형<button class="btn" id="oTh" data-a="setTheme"></button></div>
   <div class="set">저장 데이터 초기화<button class="btn b2" id="oRst" data-a="reset">초기화</button></div></div>
 
 <script>
@@ -273,6 +274,20 @@ async function load(){
   if(!S.market||!S.market.length)genMarket();
   if(S.story&&S.story.v!==2){S.story.i++;S.story.v=2;}
   (function(){let mx=0;S.roster.concat(S.market).forEach(c=>{if(c.id>mx)mx=c.id;});S.uid=Math.max(S.uid||1,mx+1);const seen={};S.roster.forEach(c=>{if(!c.id||seen[c.id])c.id=S.uid++;seen[c.id]=1;});})();
+  // 라인업이 로스터에 없는 id 를 가리키면 게임이 부팅 중에 죽는다(검은 화면 — 초기화 버튼조차
+  // 못 누른다). 위의 중복 id 재배정이 S.lineup 을 갱신하지 않으므로 실제로 생길 수 있는 상태다.
+  // 세이브를 버리지 말고 포지션에 맞는 선수로 메워서 살린다.
+  (function(){
+    const used={},was=S.lineup.join();
+    S.lineup=LPOS.map(function(pos,i){
+      const id=S.lineup[i],ok=S.roster.some(c=>c.id===id&&!used[id]);
+      if(ok){used[id]=1;return id;}
+      const c=S.roster.filter(c=>!used[c.id]).sort((a,b)=>(b.pos===pos)-(a.pos===pos)||b.ovr-a.ovr)[0];
+      if(!c)return id;used[c.id]=1;return c.id;
+    });
+    if(S.lineup.some(id=>!S.roster.some(c=>c.id===id)))initRoster();
+    if(S.lineup.join()!==was)save();   // 고친 라인업을 바로 저장해 둔다
+  })();
   if(typeof S.gfx!=='number')S.gfx=body.classList.contains('touch')?(((navigator.deviceMemory||4)<=4||(navigator.hardwareConcurrency||4)<=4)?0:1):2;
 }
 const lineupCards=()=>S.lineup.map(id=>S.roster.find(c=>c.id===id));
@@ -369,6 +384,44 @@ const SKINS=[0xffdfc4,0xf1c27d,0xe0ac69,0xc68642,0x8d5524,0x5c3a21],HAIRC=[0x1a1
 function hsh(t){let h=7;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))>>>0;return h;}
 const lum=h=>{const c=new THREE.Color(h);return (c.r+c.g+c.b)/3;};
 const cdist=(a,b)=>{const x=new THREE.Color(a),y=new THREE.Color(b);return Math.hypot(x.r-y.r,x.g-y.g,x.b-y.b);};
+/* ================= 선수 외형 테마 =================
+   기본 선수들이 너무 비슷하게 생겨서, 팀 단위로 "다른 종족"처럼 보이게 한다.
+   부품은 전부 공용 지오메트리/머티리얼이고 선수마다 숨겨 둔 채로 들고 있다가
+   테마가 붙을 때만 켠다 — 숨은 메시는 그려지지 않으므로 비용은 거의 없다. */
+const THEMES={
+  none:   {nm:'기본',   ic:'⚽'},
+  angel:  {nm:'천사',   ic:'😇', parts:['halo','wings'],          skin:0xffe8d6, hair:0xf6e7a8, kit:0xf7f7f2, sh:0xffe14d},
+  demon:  {nm:'악마',   ic:'😈', parts:['horns','tail','bwings'], skin:0xd8452f, hair:0x15151e, kit:0x6e0f1c, sh:0x1a1a22},
+  slasher:{nm:'살인마', ic:'🔪', parts:['mask','blade'],          skin:0xcfc6bb, hair:0x15151e, kit:0x1b2430, sh:0x7a1414, bald:1},
+  monk:   {nm:'스님',   ic:'🧘', parts:['sash','beads'],          skin:0xe0ac69, kit:0x9c5a2a, sh:0xd9a441, bald:1},
+  priest: {nm:'성직자', ic:'⛪', parts:['mitre','cross','stole'], skin:0xffdfc4, kit:0x5c2490, sh:0xf4f1ea, bald:1},
+  hero:   {nm:'용사',   ic:'⚔️', parts:['helm','cape','sword'],   skin:0xf1c27d, kit:0x2f5fc0, sh:0xb9c2d0, bald:1}
+};
+const THKEYS=Object.keys(THEMES);
+const THG={
+  halo:  new THREE.TorusGeometry(0.3,0.045,8,20),
+  wing:  new THREE.ConeGeometry(0.42,1.3,5),
+  bwing: new THREE.ConeGeometry(0.4,1.15,3),
+  horn:  new THREE.ConeGeometry(0.085,0.36,6),
+  tail:  new THREE.ConeGeometry(0.1,0.95,5),
+  mask:  new THREE.BoxGeometry(0.1,0.46,0.42),
+  blade: new THREE.BoxGeometry(0.07,0.8,0.15),
+  sash:  new THREE.BoxGeometry(0.98,0.28,0.98),
+  bead:  new THREE.TorusGeometry(0.29,0.04,6,16),
+  mitre: new THREE.ConeGeometry(0.34,0.66,5),
+  crossV:new THREE.BoxGeometry(0.07,0.36,0.08),
+  crossH:new THREE.BoxGeometry(0.07,0.08,0.28),
+  stole: new THREE.BoxGeometry(0.06,0.82,0.13),
+  helm:  new THREE.SphereGeometry(0.405,12,8,0,Math.PI*2,0,Math.PI*0.56),
+  helmN: new THREE.BoxGeometry(0.11,0.32,0.09),
+  cape:  new THREE.BoxGeometry(0.11,1.02,0.8),
+  sword: new THREE.BoxGeometry(0.09,1,0.18)
+};
+const TB=c=>new THREE.MeshBasicMaterial({color:c}),TT=c=>new THREE.MeshToonMaterial({color:c});
+const TM2={gold:TB(0xffe14d),feather:TT(0xfbfbff),bat:TT(0x8e1526),horn:TT(0xf0e3c4),
+  bone:TT(0xf2ece0),steel:TT(0xc3ccda),blood:TT(0x9e1b1b),saffron:TT(0xe8862e),
+  bead:TT(0x5a3a22),linen:TT(0xf7f4ec),violet:TT(0xffe14d),cape:TT(0xb8162e)};
+
 function makePlayer(team,i){
   const gk=i===0,s=team===0?1:-1,g=new THREE.Group(),b=new THREE.Group();g.add(b);
   const TM=c=>new THREE.MeshToonMaterial({color:c}),kit=TM(0xffffff),sh=TM(0xffffff),skm=TM(0xffcf9f),hm=TM(0x1a1a2a);
@@ -393,18 +446,50 @@ function makePlayer(team,i){
     add(new THREE.BoxGeometry(0.34,0.14,0.24),dark,0.06,-0.6,0,lg);b.add(lg);legs.push(lg);});
   [-0.5,0.5].forEach(z=>{const a=new THREE.Group();a.position.set(0,1.5,z);
     add(new THREE.BoxGeometry(0.16,0.58,0.16),skm,0,-0.29,0,a);add(new THREE.BoxGeometry(0.2,0.24,0.2),kit,0,-0.1,0,a);b.add(a);arms.push(a);});
+  // 테마 부품 — 전부 숨긴 채로 달아 두고 applyTheme 에서 필요한 것만 켠다
+  const th={};
+  const tp=(key,geo,mat,pos,rot,scl,par)=>{const m=new THREE.Mesh(geo,mat);
+    m.position.set(pos[0],pos[1],pos[2]);if(rot)m.rotation.set(rot[0],rot[1],rot[2]);
+    if(scl)m.scale.set(scl[0],scl[1],scl[2]);m.visible=false;(par||b).add(m);
+    (th[key]=th[key]||[]).push(m);return m;};
+  tp('halo',THG.halo,TM2.gold,[0,0.56,0],[Math.PI/2,0,0],null,hd);
+  [-1,1].forEach(s=>tp('wings',THG.wing,TM2.feather,[-0.34,1.52,s*0.34],[s*0.42,0,0.42],[1,1,0.3]));
+  [-1,1].forEach(s=>tp('bwings',THG.bwing,TM2.bat,[-0.32,1.46,s*0.36],[s*0.48,0,0.5],[1,1,0.26]));
+  [-1,1].forEach(s=>tp('horns',THG.horn,TM2.horn,[0.1,0.32,s*0.17],[s*0.32,0,-0.38],null,hd));
+  tp('tail',THG.tail,TM2.horn,[-0.5,0.92,0],[0,0,2.35]);
+  tp('mask',THG.mask,TM2.bone,[0.31,-0.02,0],null,[0.7,1.05,1.12],hd);
+  tp('blade',THG.blade,TM2.steel,[0.12,-0.66,0],[0,0,-0.42],null,arms[0]);
+  tp('sash',THG.sash,TM2.saffron,[0,1.22,0],[0.62,0,0],[1,1,1]);
+  tp('beads',THG.bead,TM2.bead,[0,-0.44,0],[Math.PI/2,0,0],null,hd);
+  tp('mitre',THG.mitre,TM2.linen,[0,0.42,0],null,[0.82,0.78,0.5],hd);
+  tp('cross',THG.crossV,TM2.gold,[0.47,1.28,0],null,[1,1.25,1.2]);tp('cross',THG.crossH,TM2.gold,[0.47,1.37,0],null,[1,1.2,1.25]);
+  [-1,1].forEach(s=>tp('stole',THG.stole,TM2.violet,[0.42,1.12,s*0.17]));
+  tp('helm',THG.helm,TM2.steel,[0,0.07,0],null,null,hd);
+  tp('helm',THG.helmN,TM2.steel,[0.33,-0.06,0],null,null,hd);
+  tp('cape',THG.cape,TM2.cape,[-0.45,1.14,0]);
+  tp('sword',THG.sword,TM2.steel,[-0.46,1.55,-0.14],[0,0,0.42]);
   const ring=new THREE.Mesh(new THREE.RingGeometry(0.62,0.82,24),new THREE.MeshBasicMaterial({color:0xffe14d,side:THREE.DoubleSide}));
   ring.rotation.x=-Math.PI/2;ring.position.y=0.04;ring.visible=false;g.add(ring);scene.add(g);
   return {team:team,i:i,gk:gk,name:'',nm:'',num:LNUM[i],gr:0,spd:1,sht:1,def:1,ctl:0.5,gkA:0.3,sk:'',off:false,hx:HOME[i][0]*s,hz:HOME[i][1]*s,
-    x:HOME[i][0]*s,z:HOME[i][1]*s,vx:0,vz:0,face:team===0?0:Math.PI,g:g,b:b,legs:legs,arms:arms,ring:ring,kit:kit,sh:sh,skm:skm,hm:hm,head:head,hairs:hairs,eyes:eyes,brows:brows,mouth:mouth,nose:nose,cv:cv,tex:tex,
+    x:HOME[i][0]*s,z:HOME[i][1]*s,vx:0,vz:0,face:team===0?0:Math.PI,g:g,b:b,legs:legs,arms:arms,ring:ring,th:th,theme:'none',kit:kit,sh:sh,skm:skm,hm:hm,head:head,hairs:hairs,eyes:eyes,brows:brows,mouth:mouth,nose:nose,cv:cv,tex:tex,
     ph:rnd()*6,tph:0,stam:1,kickCd:0,tackCd:0,stun:0,lunge:0,hold:0,phantom:0,jumpT:0,pose:'',poseT:0,poseDir:1,jy:0,rx:0,sy:1,
     bw:1,bh:1,sl:0,au:0,bt:rnd()*3,mood:0,moodT:0,es:1,mw:1,browA:0,kickT:0,kl:0,flipT:0,cel:'',celS:0,turn:0};
 }
 for(let t=0;t<2;t++)for(let i=0;i<5;i++)players.push(makePlayer(t,i));
 function drawNum(p,light){const c=p.cv.getContext('2d');c.clearRect(0,0,64,64);c.fillStyle=light?'#10233a':'#fff';c.textAlign='center';c.font='bold 11px Arial';c.fillText(p.nm.split(' ').pop().slice(0,8),32,13);c.font='bold 42px Arial';c.fillText(p.num,32,54);p.tex.needsUpdate=true;}
-function applyTeam(t,cards,kit){
+function applyTheme(p,name){
+  const t=THEMES[name]||THEMES.none;p.theme=THEMES[name]?name:'none';
+  for(const k in p.th)p.th[k].forEach(m=>{m.visible=false;});
+  if(t.parts)t.parts.forEach(k=>{(p.th[k]||[]).forEach(m=>{m.visible=true;});});
+  if(t.skin)p.skm.color.setHex(t.skin);
+  if(t.hair)p.hm.color.setHex(t.hair);
+  if(t.bald)p.hairs.forEach(m=>{m.visible=false;});
+  if(t.kit){p.kit.color.setHex(t.kit);drawNum(p,lum(t.kit)>0.7);}
+  if(t.sh)p.sh.color.setHex(t.sh);
+}
+function applyTeam(t,cards,kit,theme){
   kit=kit||(t===0?[0x1e6bff,0xffffff,0xffd23f]:[0xff3b3b,0x1a1a2a,0x2ee6a6]);
-  cards.forEach(function(c,i){const p=players[t*5+i];p.num=LNUM[i];applyCard(p,c,kit);});
+  cards.forEach(function(c,i){const p=players[t*5+i];p.num=LNUM[i];applyCard(p,c,kit);applyTheme(p,theme||'none');});
 }
 function applyCard(p,c,kit){{const f=clamp((c.ovr-60)/40,0,1),h=hsh(c.name+c.pos),B=(n,m)=>(h>>>n)%m;
     p.name=c.pos+' '+c.name;p.nm=c.name;p.gr=c.g;p.spd=0.94+0.2*f;p.sht=0.9+0.3*f;p.def=0.85+0.4*f;p.ctl=0.35+0.6*f;p.gkA=f;p.sk=c.sk||'';p.off=false;p.g.visible=true;
@@ -460,7 +545,7 @@ const pvScene=new THREE.Scene(),pvCam=new THREE.PerspectiveCamera(35,170/220,0.1
 pvScene.add(new THREE.HemisphereLight(0xffffff,0x334466,1));(function(){const l=new THREE.DirectionalLight(0xffffff,0.6);l.position.set(5,6,3);pvScene.add(l);})();
 const pv=makePlayer(0,4);scene.remove(pv.g);pvScene.add(pv.g);pv.x=0;pv.z=0;
 let pvR=null,selId=0,curScr='',slotSel=-1,posF='';
-function pvUpdate(){const c=S.roster.find(x=>x.id===selId);if(!c)return;const sl=S.lineup.indexOf(c.id);pv.gk=c.pos==='GK';pv.num=sl>=0?LNUM[sl]:{GK:1,CB:4,CM:8,ST:10}[c.pos];applyCard(pv,c,[0x1e6bff,0xffffff,0xffd23f]);pv.mood=1;pv.moodT=0.9;}
+function pvUpdate(){const c=S.roster.find(x=>x.id===selId);if(!c)return;const sl=S.lineup.indexOf(c.id);pv.gk=c.pos==='GK';pv.num=sl>=0?LNUM[sl]:{GK:1,CB:4,CM:8,ST:10}[c.pos];applyCard(pv,c,[0x1e6bff,0xffffff,0xffd23f]);applyTheme(pv,S.theme||'none');pv.mood=1;pv.moodT=0.9;}
 function mainP(){const i=cfg.my?-1:S.lineup.indexOf(S.main);return i>0?players[i]:players[3];}
 const tgt=new THREE.Mesh(new THREE.RingGeometry(1.1,1.5,32),new THREE.MeshBasicMaterial({color:0xffe14d,side:THREE.DoubleSide,transparent:true,opacity:0.85}));tgt.rotation.x=-Math.PI/2;tgt.visible=false;scene.add(tgt);
 const cones=[];for(let i=0;i<6;i++){const m=new THREE.Mesh(new THREE.ConeGeometry(0.3,0.7,10),new THREE.MeshToonMaterial({color:0xff7a1a}));m.visible=false;scene.add(m);cones.push(m);}
@@ -495,7 +580,7 @@ function kickoff(team){recC=0;['cel','skip','rp','lineup'].forEach(i=>{$(i).styl
 function startMatch(c){
   if(!c.kitSet&&!c.train){showKit(c);return;}
   cfg=c;initAudio();const kc=kitCols(c);
-  applyTeam(0,c.my||lineupCards(),kc[0]);applyTeam(1,c.opp||genTeam(70),kc[1]);
+  applyTeam(0,c.my||lineupCards(),kc[0],S.theme);applyTeam(1,c.opp||genTeam(70),kc[1],c.oppTheme);
   if(c.train)for(let i=6;i<10;i++){players[i].off=true;players[i].g.visible=false;}
   act=players.filter(p=>!p.off);
   $('tb').textContent=c.names[0].slice(0,9);$('tr').textContent=c.names[1].slice(0,9);
@@ -978,19 +1063,19 @@ const STORY=[
  {c:1,t:'선발 경쟁',o:['리버 타운',68],m:'pass80',pre:[['감독','혼자 하는 축구는 없다. 패스로 보여줘.']]},
  {c:1,t:'후반전 역전극',o:['하버 시티',70],m:'comeback',half:1,pre:[['감독','0-1로 지고 있다. 후반에 네가 뒤집어.']]},
  {c:1,t:'주전 확정전',o:['노스 스타즈',72],m:'rating8',post:[['감독','이제 넌 우리 팀 선발이다.']]},
- {c:2,t:'라이벌과의 첫 대결',o:['임페리얼 FC',90],m:'play',rival:1,big:1,pre:[[RIVAL,'여기까지 올라온 건 인정하지.'],[RIVAL,'하지만 세계 최고가 되는 건 나야.']],post:[[RIVAL,'아직 멀었군. 더 강해져서 와라.'],['나','다음엔 반드시 이긴다.']]},
+ {c:2,t:'라이벌과의 첫 대결',o:['임페리얼 FC',90],m:'play',rival:1,big:1,th:'demon',pre:[[RIVAL,'여기까지 올라온 건 인정하지.'],[RIVAL,'하지만 세계 최고가 되는 건 나야.']],post:[[RIVAL,'아직 멀었군. 더 강해져서 와라.'],['나','다음엔 반드시 이긴다.']]},
  {c:2,t:'리그 최종전',o:['킹스 로드',76],m:'win'},
- {c:2,t:'컵 대회 — 라이벌 재대결',o:['임페리얼 FC',84],m:'nolose',rival:1,big:1,pre:[[RIVAL,'또 너냐. 이번엔 얼마나 버티는지 보지.']],post:[[RIVAL,'제법이군. 월드컵에서 보자.']]},
+ {c:2,t:'컵 대회 — 라이벌 재대결',o:['임페리얼 FC',84],m:'nolose',rival:1,big:1,th:'demon',pre:[[RIVAL,'또 너냐. 이번엔 얼마나 버티는지 보지.']],post:[[RIVAL,'제법이군. 월드컵에서 보자.']]},
  {c:3,t:'국가대표 데뷔전',o:['친선 상대국',80],m:'win',big:1,col:0x1fa34a,pre:[['대표팀 감독','국가대표에 온 걸 환영한다. 유니폼의 무게를 느껴봐.']]},
  {c:3,t:'월드컵 예선 최종전',o:['예선 라이벌국',83],m:'win',big:1,col:0xff8a1a,post:[['대표팀 감독','월드컵 출전권을 따냈다!']]},
  {c:4,t:'월드컵 조별리그',o:['조별리그 상대국',84],m:'nolose',big:1,col:0x1fa34a},
  {c:4,t:'월드컵 16강',o:['16강 상대국',86],m:'win',ko:1,big:1,col:0xffd23f},
  {c:4,t:'월드컵 8강',o:['8강 상대국',88],m:'win',ko:1,big:1,col:0xff8a1a},
  {c:4,t:'월드컵 준결승',o:['준결승 상대국',90],m:'win',ko:1,big:1,col:0x2a52be},
- {c:4,t:'월드컵 결승',o:['카이저 대표팀',92],m:'win',ko:1,big:1,final:1,rival:1,col:0x111111,pre:[[RIVAL,'결국 여기서 만나는군.'],['나','무명 신인은 이제 없어. 오늘 끝낸다.']],post:[[RIVAL,'네가 세계 최고다.']]},
- {c:5,t:'전설의 클럽 1',o:['GALAXY XI',94],m:'win',big:1,col:0xf2f2f2},
- {c:5,t:'전설의 클럽 2',o:['IMMORTALS',96],m:'win',big:1,col:0x7a1fa3},
- {c:5,t:'전설의 선수들',o:['ALL-TIME LEGENDS',99],m:'win',big:1,final:1,rival:1,col:0xd4af37}
+ {c:4,t:'월드컵 결승',o:['카이저 대표팀',92],m:'win',ko:1,big:1,final:1,rival:1,col:0x111111,th:'demon',pre:[[RIVAL,'결국 여기서 만나는군.'],['나','무명 신인은 이제 없어. 오늘 끝낸다.']],post:[[RIVAL,'네가 세계 최고다.']]},
+ {c:5,t:'전설의 클럽 1',o:['GALAXY XI',94],m:'win',big:1,col:0xf2f2f2,th:'angel'},
+ {c:5,t:'전설의 클럽 2',o:['IMMORTALS',96],m:'win',big:1,col:0x7a1fa3,th:'priest'},
+ {c:5,t:'전설의 선수들',o:['ALL-TIME LEGENDS',99],m:'win',big:1,final:1,rival:1,col:0xd4af37,th:'hero'}
 ];
 const STM=[['GK','B. NOH'],['CB','D. HAN'],['CB','T. YOON'],['CM','R. SEO']];
 function storySquad(){const s=S.story,stg=STORY[Math.min(s.i,STORY.length-1)],b=[58,64,72,80,85,92][stg.c];
@@ -998,10 +1083,11 @@ function storySquad(){const s=S.story,stg=STORY[Math.min(s.i,STORY.length-1)],b=
   t.push({name:s.name,pos:'ST',g:gradeOf(s.ovr),ovr:s.ovr,sk:stg.c>=2?'meteor':''});return t;}
 function storyOpp(stg){const t=genTeam(stg.o[1],stg.c>=4);if(stg.rival)t[4]={name:'KAISER',pos:'ST',g:5,ovr:97,sk:'thunder'};return t;}
 function misOk(m,r){return !m||m==='play'||(m==='win'||m==='comeback'?r.win:m==='goal1'?r.gf>=1:m==='pass80'?st.pt>=5&&st.po/st.pt>=0.8:m==='rating8'?r.rating>=8:m==='nolose'?(r.win||r.draw):true);}
+let dlgTheme='none';
 function dialog(lines,cb,opp){
   if(!lines||!lines.length){cb();return;}
   dq=lines.slice();dcb=cb;document.querySelectorAll('.scr').forEach(e=>{e.style.display='none';});
-  applyTeam(0,storySquad());if(opp)applyTeam(1,opp);act=players;
+  applyTeam(0,storySquad(),null,S.theme);if(opp)applyTeam(1,opp,null,dlgTheme);act=players;
   players.forEach(p=>{const d=p.team===0?-1:1;p.vx=p.vz=0;p.stun=0;p.cel='';p.face=p.team===0?0:Math.PI;if(p.i===4){p.x=d*2.2;p.z=0;}else{p.x=d*7;p.z=(p.i-1.5)*2.2;}});
   ball.owner=null;ball.v.set(0,0,0);ball.p.set(0,BR,0.6);ball.mesh.visible=true;ctrl.ring.visible=false;state='cut';dlgShow();
 }
@@ -1164,7 +1250,7 @@ const R={
     $('onMain').style.display='block';$('srch').style.display='none';
   },
   settings:function(){
-    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD'][S.diff];$('oLen').textContent=(S.len/60)+'분';
+    $('oSnd').textContent=S.snd?'ON':'OFF';$('oDif').textContent=['EASY','NORMAL','HARD'][S.diff];$('oTh').textContent=THEMES[S.theme||'none'].ic+' '+THEMES[S.theme||'none'].nm;$('oLen').textContent=(S.len/60)+'분';
     $('oGfx').textContent=['LOW','MEDIUM','HIGH','ULTRA'][S.gfx];$('oStd').textContent=STAD[S.stad||0][0];rstArm=false;$('oRst').textContent='초기화';
   }
 };
@@ -1235,9 +1321,9 @@ const A={
     if(S.lineup.indexOf(c.id)<0){let slot=slotSel>=0&&LPOS[slotSel]===c.pos?slotSel:-1,low=1e9;
       if(slot<0)LPOS.forEach((p,i)=>{if(p!==c.pos)return;const o=S.roster.find(x=>x.id===S.lineup[i]).ovr;if(o<low){low=o;slot=i;}});
       if(slot<0)return;S.lineup[slot]=c.id;}
-    S.main=c.id;save();applyTeam(0,lineupCards());R.team();alertMsg(c.name+' 출전');},
+    S.main=c.id;save();applyTeam(0,lineupCards(),null,S.theme);R.team();alertMsg(c.name+' 출전');},
   auto:function(){const used={};S.lineup=LPOS.map(function(p,i){const best=S.roster.filter(k=>k.pos===p&&!k.locked&&!used[k.id]).sort((a,b)=>b.ovr-a.ovr)[0];const id=best?best.id:S.lineup[i];used[id]=1;return id;});
-    selId=S.lineup[4];save();applyTeam(0,lineupCards());R.team();alertMsg('최강 라인업 편성 · 팀 OVR '+myOvr());},
+    selId=S.lineup[4];save();applyTeam(0,lineupCards(),null,S.theme);R.team();alertMsg('최강 라인업 편성 · 팀 OVR '+myOvr());},
   tut:function(){const s=S.story;if(!s){show('story');return;}const stg=STORY[s.i],first=!!(stg&&stg.tut);
     const go=function(){startMatch({names:[s.name,'COACH'],train:true,tut:true,story:true,my:storySquad(),opp:genTeam(62),onEnd:function(r){
         if(first&&r&&r.tutDone){s.i++;save();show('story');alertMsg('훈련 완료 — 다음은 실전 테스트');}else show('story');}});
@@ -1252,10 +1338,10 @@ const A={
   storyNew:function(){const n=($('stName').value||'').trim().toUpperCase().slice(0,10)||'ROOKIE';S.story={i:0,name:n,ovr:62,v:2};save();R.story();},
   storyReset:function(){S.story=null;save();R.story();},
   storyGo:function(){const stg=STORY[S.story.i];if(!stg)return;if(stg.tut){A.tut();return;}const opp=storyOpp(stg);
-    dialog(stg.pre,function(){startMatch({names:[S.story.name,stg.o[0]],my:storySquad(),opp:opp,knock:!!stg.ko,mis:stg.m,big:!!stg.big,final:!!stg.final,rival:!!stg.rival,start:stg.half?[0,1]:null,half:!!stg.half,story:true,oppCol:stg.col,onEnd:r=>storyAfter(r,stg,opp)});},opp);},
+    dlgTheme=stg.th||'none';dialog(stg.pre,function(){startMatch({names:[S.story.name,stg.o[0]],my:storySquad(),opp:opp,knock:!!stg.ko,mis:stg.m,big:!!stg.big,final:!!stg.final,rival:!!stg.rival,start:stg.half?[0,1]:null,half:!!stg.half,story:true,oppCol:stg.col,oppTheme:stg.th,onEnd:r=>storyAfter(r,stg,opp)});},opp);},
   setGfx:function(){S.gfx=(S.gfx+1)%4;applyGfx();save();R.settings();},
   play:function(){startMatch({names:['MY TEAM','RIVALS'],opp:genTeam(myOvr()-3+S.diff*3),knock:true,onEnd:()=>show('menu')});},
-  train:function(){startMatch({names:['MY TEAM','TRAIN'],opp:genTeam(65),train:true,onEnd:()=>show('menu')});},
+  train:function(){startMatch({names:['MY TEAM','TRAIN'],opp:genTeam(65),train:true,oppTheme:'monk',onEnd:()=>show('menu')});},
   lineup:function(v){
     const c=S.roster.find(x=>x.id===+v);if(!c||S.lineup.indexOf(c.id)>=0)return;
     let slot=-1,low=1e9;LPOS.forEach((p,i)=>{if(p!==c.pos)return;const o=S.roster.find(x=>x.id===S.lineup[i]).ovr;if(o<low){low=o;slot=i;}});
@@ -1263,7 +1349,7 @@ const A={
   },
   up:function(v){const c=S.roster.find(x=>x.id===+v);if(!c)return;const lv=c.lv||1;if(lv>=100){alertMsg('최대 레벨');return;}const cost=3000*lv;if(S.coins<cost){alertMsg('Coins가 부족합니다.');return;}
     S.coins-=cost;c.lv=lv+1;if(c.lv%5===0&&c.ovr<99){c.ovr++;c.g=Math.max(c.g,gradeOf(c.ovr));}save();coins();R.team();sfx.post();},
-  boss:function(){startMatch({names:['MY TEAM','BOSS'],opp:genTeam(97,true),knock:true,boss:true,big:true,onEnd:()=>show('play')});},
+  boss:function(){startMatch({names:['MY TEAM','BOSS'],opp:genTeam(97,true),knock:true,boss:true,big:true,oppTheme:'slasher',onEnd:()=>show('play')});},
   pk:function(){startMatch({names:['MY TEAM','RIVALS'],opp:genTeam(myOvr()),knock:true,pens:true,onEnd:()=>show('play')});},
   draw:v=>{const a=v.split(',');doDraw(a[0],+a[1]);},
   closeReveal:function(){$('reveal').style.display='none';$('rvFx').className='';},
@@ -1289,6 +1375,7 @@ const A={
   cancelSearch:function(){searchId++;R.online();},
   onlineBack:function(){searchId++;show('menu');},
   setSnd:function(){S.snd=!S.snd;if(crowdGain)crowdGain.gain.value=S.snd?0.05:0;save();R.settings();},
+  setTheme:function(){const i=THKEYS.indexOf(S.theme||'none');S.theme=THKEYS[(i+1)%THKEYS.length];applyTeam(0,lineupCards(),null,S.theme);applyTheme(pv,S.theme);save();R.settings();sfx.post();},
   setStad:function(){S.stad=((S.stad||0)+1)%STAD.length;applyStadium();save();R.settings();},
   setDiff:function(){S.diff=(S.diff+1)%3;save();R.settings();},
   setLen:function(){S.len=S.len===180?60:S.len+60;save();R.settings();},
@@ -1312,7 +1399,7 @@ $('fNm').addEventListener('input',()=>R.market());
 if(location.hash==='#debug')window.__sf={players:players,ball:ball,goal:goal,get state(){return state;},get tut(){return tut;},get ctrl(){return ctrl;},get score(){return score;},set time(v){time=v;},get gauge(){return gauge;},get recC(){return recC;},get S(){return S;},get selId(){return selId;}};
 /* ================= BOOT ================= */
 load().then(function(){
-  applyGfx();applyStadium();applyTeam(0,lineupCards());applyTeam(1,genTeam(70));
+  applyGfx();applyStadium();applyTeam(0,lineupCards(),null,S.theme);applyTeam(1,genTeam(70));
   show('menu');requestAnimationFrame(frame);
 });
 })();
