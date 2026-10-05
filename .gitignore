@@ -27,3 +27,4 @@ party-stickman/.wrangler/
 
 # 워커 의존성
 party-football/node_modules/
+party-football/.wrangler/
