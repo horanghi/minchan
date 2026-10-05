@@ -1457,7 +1457,7 @@ let searchId=0;
 let lobbySock=null;
 function watchRooms(){
   if(lobbySock) return;
-  const sch=location.protocol==='https:'?'wss':'ws';
+  const sch=NET_LOCAL?'ws':'wss';   // workers.dev 는 TLS 전용
   try{ lobbySock=new WebSocket(sch+'://'+NET_HOST+'/parties/lobby/global'); }catch(_){ renderRooms(null); return; }
   lobbySock.onmessage=ev=>{ let m;try{m=JSON.parse(ev.data);}catch{return;} if(m.type==='rooms')renderRooms(m.rooms); };
   lobbySock.onclose=()=>{ lobbySock=null; };
@@ -1477,7 +1477,7 @@ async function netOpen(code,asHost){
   await netProbe();
   net.close();
   net.room=code; net.host=asHost; net.on=true; net.err='';
-  const sch=location.protocol==='https:'?'wss':'ws';
+  const sch=NET_LOCAL?'ws':'wss';   // workers.dev 는 TLS 전용
   let s; try{ s=new WebSocket(sch+'://'+NET_HOST+'/parties/room/'+code); }
   catch(_){ netFail('서버에 연결할 수 없습니다.'); return; }
   net.sock=s;
